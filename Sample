@@ -2,29 +2,51 @@ stages:
   - build
   - deploy
 
+# -------------------------
+# Variables - adjust if needed
+# -------------------------
 variables:
+  # Namespace & context used by deploy job
+  KUBE_NAMESPACE: "airflow"
+  KUBE_CONTEXT: "minikube"
+
+  # Image tag (uses GitLab provided variables)
   IMAGE_TAG: "$CI_REGISTRY_IMAGE/airflow:$CI_COMMIT_SHORT_SHA"
+
+  # If you ever want to push to registry, set PUSH_REGISTRY to "true" in CI/CD variables
   PUSH_REGISTRY: "false"
 
-# -------------- Windows build job (for Windows shell executor with Docker installed) --------------
+# -------------------------
+# Windows build job (host Docker required on runner)
+# -------------------------
 build-airflow-image-windows:
   stage: build
-  tags: ["Snowflake"]        # your Windows runner tag
+  tags: ["local"]       # <-- ensure this matches your Windows runner tag
   script:
     - powershell -NoProfile -Command "
-        Write-Host 'Running on Windows runner - building with host Docker...';
-        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'docker CLI not found on runner. Install Docker Desktop or ensure docker is in PATH.' };
-        Write-Host 'Building image: $env:IMAGE_TAG';
+        Write-Host '==== BUILD (Windows runner) ====';
+
+        # sanity checks
+        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+          throw 'docker CLI not found on runner. Install Docker Desktop or ensure docker is in PATH.';
+        }
+
+        Write-Host 'Building Docker image:' $env:IMAGE_TAG;
         docker build -t $env:IMAGE_TAG .;
-        if ($LASTEXITCODE -ne 0) { throw 'docker build failed' };
+        if ($LASTEXITCODE -ne 0) { throw 'docker build failed'; }
+
         Write-Host 'Saving image to image.tar';
         docker save -o image.tar $env:IMAGE_TAG;
-        if (-not (Test-Path -Path image.tar)) { throw 'image.tar not created' };
+        if (-not (Test-Path -Path image.tar)) { throw 'image.tar not created'; }
+
         if ($env:PUSH_REGISTRY -eq 'true') {
           Write-Host 'Pushing to registry (optional)';
           docker login -u $env:CI_REGISTRY_USER -p $env:CI_REGISTRY_PASSWORD $env:CI_REGISTRY;
           docker push $env:IMAGE_TAG;
         }
+
+        Write-Host 'Listing workspace files for debug:';
+        Get-ChildItem -Force | Format-Table Name,Length -AutoSize;
       "
   artifacts:
     paths:
@@ -36,74 +58,80 @@ build-airflow-image-windows:
   after_script:
     - echo IMAGE_TAG="$IMAGE_TAG" > build.env
 
-# Deploy to Minikube (Windows runner with PowerShell)
+
+# -------------------------
+# Deploy job (Windows PowerShell)
+# Requires: minikube and kubectl binaries available on the runner PATH and a kubeconfig in KUBE_CONFIG var
+# -------------------------
 deploy-minikube:
   stage: deploy
-  tags: ["Snowflake"]   # your Windows runner tag
-  needs: ["build-airflow-image"]
+  tags: ["local"]   # <-- ensure this matches your Windows runner tag
+  needs: ["build-airflow-image-windows"]
   script:
-    - |
-      # ----- Prepare kubeconfig (PowerShell) -----
-      if (-not $Env:KUBE_CONFIG) { throw "KUBE_CONFIG is missing (base64 kubeconfig)." }
-      [IO.File]::WriteAllBytes("$PWD/kubeconfig.yaml", [Convert]::FromBase64String($Env:KUBE_CONFIG))
-      $Env:KUBECONFIG = "$PWD/kubeconfig.yaml"
-      kubectl version --client
-      kubectl config get-contexts
-      kubectl config use-context $Env:KUBE_CONTEXT
+    - powershell -NoProfile -Command "
+        Write-Host '==== DEPLOY (Windows runner) ====';
 
-    - |
-      # ----- Ensure namespace -----
-      Write-Host "Ensuring namespace $($Env:KUBE_NAMESPACE) exists..."
-      kubectl get ns $Env:KUBE_NAMESPACE 2>$null
-      if ($LASTEXITCODE -ne 0) { kubectl create ns $Env:KUBE_NAMESPACE }
+        # ----- Write kubeconfig from base64 env var -----
+        if (-not $env:KUBE_CONFIG) { throw 'KUBE_CONFIG (base64 kubeconfig) is missing.' }
+        [IO.File]::WriteAllBytes('$PWD\\kubeconfig.yaml', [Convert]::FromBase64String($env:KUBE_CONFIG))
+        $env:KUBECONFIG = '$PWD\\kubeconfig.yaml'
 
-    - |
-      # ----- Apply manifests -----
-      kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-pvc.yaml"
-      kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-deployment.yaml"
-      kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-service.yaml"
-      kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-config.yaml"
-      kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-deployment.yaml"
-      kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-scheduler.yaml"
-      kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-service.yaml"
+        Write-Host 'kubectl client version:'; kubectl version --client;
+        Write-Host 'kubectl contexts:'; kubectl config get-contexts || Write-Host 'no contexts';
 
-    - |
-      # ----- Load image into Minikube (PowerShell) -----
-      # The build job produced 'image.tar' as an artifact (docker save).
-      # Try direct minikube load by name; if that fails, load from the tarball.
-      Write-Host "Attempting to load image into minikube: $Env:IMAGE_TAG"
-      # first try (preferred) - if Minikube can access docker/socket on runner (may work if same host)
-      $try1 = Start-Process -FilePath "minikube" -ArgumentList @("image","load",$Env:IMAGE_TAG) -NoNewWindow -PassThru -Wait -ErrorAction SilentlyContinue
-      if ($try1 -and $try1.ExitCode -eq 0) {
-        Write-Host "Loaded image by name into minikube."
-      } else {
-        Write-Host "Falling back to loading image from tar artifact (image.tar)..."
-        # Ensure artifact exists
-        if (-Not (Test-Path -Path "$PWD\image.tar")) { throw "image.tar missing - build job artifact not found." }
-        $try2 = Start-Process -FilePath "minikube" -ArgumentList @("image","load","--input","image.tar") -NoNewWindow -PassThru -Wait -ErrorAction SilentlyContinue
-        if ($try2.ExitCode -ne 0) { Write-Warning "minikube image load --input image.tar failed (ExitCode $($try2.ExitCode))." }
-      }
+        kubectl config use-context $env:KUBE_CONTEXT;
 
-    - |
-      # ----- Update deployments to refer to the image tag (optional, but keeps manifests consistent) -----
-      Write-Host "Updating images to $($Env:IMAGE_TAG) ..."
-      # Ensure container names are correct in your manifests; adjust container-name if necessary
-      kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-web airflow-web=$Env:IMAGE_TAG --record || Write-Warning "set image for airflow-web failed - check container name"
-      kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-scheduler scheduler=$Env:IMAGE_TAG --record || Write-Warning "set image for airflow-scheduler failed - check container name"
+        # ----- Ensure namespace -----
+        Write-Host 'Ensuring namespace' $env:KUBE_NAMESPACE;
+        kubectl get ns $env:KUBE_NAMESPACE 2>$null;
+        if ($LASTEXITCODE -ne 0) { kubectl create ns $env:KUBE_NAMESPACE }
 
-    - |
-      # ----- Wait for rollout (PowerShell-safe) -----
-      Write-Host "Waiting for airflow-web rollout..."
-      $p = Start-Process -FilePath "kubectl" -ArgumentList @("rollout","status","deploy/airflow-web","-n",$Env:KUBE_NAMESPACE,"--timeout=300s") -NoNewWindow -PassThru -Wait
-      if ($p.ExitCode -ne 0) { Write-Warning "airflow-web rollout timed out or failed, continuing..." }
+        # ----- Apply manifests -----
+        Write-Host 'Applying manifests...';
+        kubectl apply -n $env:KUBE_NAMESPACE -f 'k8s/postgres-pvc.yaml'
+        kubectl apply -n $env:KUBE_NAMESPACE -f 'k8s/postgres-deployment.yaml'
+        kubectl apply -n $env:KUBE_NAMESPACE -f 'k8s/postgres-service.yaml'
+        kubectl apply -n $env:KUBE_NAMESPACE -f 'k8s/airflow-config.yaml'
+        kubectl apply -n $env:KUBE_NAMESPACE -f 'k8s/airflow-deployment.yaml'
+        kubectl apply -n $env:KUBE_NAMESPACE -f 'k8s/airflow-scheduler.yaml'
+        kubectl apply -n $env:KUBE_NAMESPACE -f 'k8s/airflow-service.yaml'
 
-      Write-Host "Waiting for airflow-scheduler rollout..."
-      $p = Start-Process -FilePath "kubectl" -ArgumentList @("rollout","status","deploy/airflow-scheduler","-n",$Env:KUBE_NAMESPACE,"--timeout=300s") -NoNewWindow -PassThru -Wait
-      if ($p.ExitCode -ne 0) { Write-Warning "airflow-scheduler rollout timed out or failed, continuing..." }
+        # ----- Load image into minikube -----
+        Write-Host 'Loading image into minikube: ' $env:IMAGE_TAG;
 
-    - kubectl get pods -n $Env:KUBE_NAMESPACE -o wide
-    - kubectl get svc  -n $Env:KUBE_NAMESPACE
+        # prefer to load from tar (artifact); fallback to name-based load
+        if (Test-Path -Path '$PWD\\image.tar') {
+          Write-Host 'Found image.tar, using minikube image load --input image.tar';
+          $p = Start-Process -FilePath 'minikube' -ArgumentList @('image','load','--input','image.tar') -NoNewWindow -PassThru -Wait -ErrorAction SilentlyContinue;
+          if (-not $p) { throw 'minikube image load command failed to start'; }
+          if ($p.ExitCode -ne 0) { Write-Warning 'minikube image load --input image.tar failed with ExitCode ' + $p.ExitCode; }
+        } else {
+          Write-Host 'image.tar not found; attempting minikube image load by name';
+          $p = Start-Process -FilePath 'minikube' -ArgumentList @('image','load',$env:IMAGE_TAG) -NoNewWindow -PassThru -Wait -ErrorAction SilentlyContinue;
+          if ($p -and $p.ExitCode -ne 0) { Write-Warning 'minikube image load by name failed with ExitCode ' + $p.ExitCode; }
+        }
 
+        # ----- Update deployments to use the image tag (keeps cluster state consistent) -----
+        Write-Host 'Setting image on deployments (if container names match)';
+        kubectl -n $env:KUBE_NAMESPACE set image deploy/airflow-web airflow-web=$env:IMAGE_TAG --record || Write-Warning 'set image for airflow-web failed - check container name in manifest';
+        kubectl -n $env:KUBE_NAMESPACE set image deploy/airflow-scheduler scheduler=$env:IMAGE_TAG --record || Write-Warning 'set image for airflow-scheduler failed - check container name in manifest';
+
+        # ----- Rollout status -----
+        Write-Host 'Waiting for rollout...';
+        $p = Start-Process -FilePath 'kubectl' -ArgumentList @('rollout','status','deploy/airflow-web','-n',$env:KUBE_NAMESPACE,'--timeout=300s') -NoNewWindow -PassThru -Wait;
+        if ($p.ExitCode -ne 0) { Write-Warning 'airflow-web rollout timed out or failed'; }
+
+        $p = Start-Process -FilePath 'kubectl' -ArgumentList @('rollout','status','deploy/airflow-scheduler','-n',$env:KUBE_NAMESPACE,'--timeout=300s') -NoNewWindow -PassThru -Wait;
+        if ($p.ExitCode -ne 0) { Write-Warning 'airflow-scheduler rollout timed out or failed'; }
+
+        # ----- Summary -----
+        Write-Host 'Pods:';
+        kubectl get pods -n $env:KUBE_NAMESPACE -o wide;
+        Write-Host 'Services:';
+        kubectl get svc -n $env:KUBE_NAMESPACE -o wide;
+      "
+  dependencies:
+    - build-airflow-image-windows
   artifacts:
     when: on_failure
     paths:
