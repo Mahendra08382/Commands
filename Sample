@@ -9,7 +9,7 @@ variables:
 # -------------- Windows build job (for Windows shell executor with Docker installed) --------------
 build-airflow-image-windows:
   stage: build
-  tags: ["local"]        # your Windows runner tag
+  tags: ["Snowflake"]        # your Windows runner tag
   script:
     - powershell -NoProfile -Command "
         Write-Host 'Running on Windows runner - building with host Docker...';
@@ -36,11 +36,10 @@ build-airflow-image-windows:
   after_script:
     - echo IMAGE_TAG="$IMAGE_TAG" > build.env
 
-
 # Deploy to Minikube (Windows runner with PowerShell)
 deploy-minikube:
   stage: deploy
-  tags: ["local"]   # your Windows runner tag
+  tags: ["Snowflake"]   # your Windows runner tag
   needs: ["build-airflow-image"]
   script:
     - |
