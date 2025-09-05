@@ -1,16 +1,12 @@
-# example: start from the official apache/airflow image
-FROM apache/airflow:2.6.0
-
-# Copy your corporate root CA into the container
-COPY corp-ca.crt /usr/local/share/ca-certificates/corp-ca.crt
-
-# Install ca-certificates and update the system trust store
-USER root
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
-  && update-ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-
-# (Continue with rest of Dockerfile: copy dags/plugins, set user back if needed)
-# e.g. COPY dags/ /opt/airflow/dags/
-# USER airflow
+{
+  "builder": {
+    "gc": {
+      "defaultKeepStorage": "20GB"
+    },
+    "enabled": true
+  },
+  "experimental": false,
+  "insecure-registries": [
+    "registry.gitlab.com"
+  ]
+}
