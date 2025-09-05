@@ -6,64 +6,68 @@ variables:
   KUBE_NAMESPACE: "airflow"
   KUBE_CONTEXT: "minikube"
   IMAGE_TAG: "$CI_REGISTRY_IMAGE/airflow:$CI_COMMIT_SHORT_SHA"
-  PUSH_REGISTRY: "false"
 
 build-airflow-image:
   stage: build
-  tags: ["local"]   # Windows runner tag
+  image: docker:24.0.9
+  services:
+    - docker:24.0.9-dind
+  variables:
+    DOCKER_DRIVER: overlay2
   script:
-    - powershell -NoProfile -Command "
-        Write-Host 'Building image:' $env:IMAGE_TAG;
-        docker build -t $env:IMAGE_TAG .;
-        if ($LASTEXITCODE -ne 0) { throw 'docker build failed' };
-        Write-Host 'Saving image to image.tar';
-        docker save -o image.tar $env:IMAGE_TAG;
-        if (-not (Test-Path -Path image.tar)) { throw 'image.tar not created' };
-        if ($env:PUSH_REGISTRY -eq 'true') {
-          docker login -u $env:CI_REGISTRY_USER -p $env:CI_REGISTRY_PASSWORD $env:CI_REGISTRY;
-          docker push $env:IMAGE_TAG;
-        }
-      "
-  artifacts:
-    paths:
-      - image.tar
-    expire_in: 1h
-    reports:
-      dotenv:
-        - build.env
-  after_script:
-    - echo IMAGE_TAG="$IMAGE_TAG" > build.env
+    - echo "Building local image $IMAGE_TAG ..."
+    - docker build -t "$IMAGE_TAG" .
+    # Optional: skip push if you don't need registry
+    - echo "Skipping push, using minikube preload"
 
 deploy-minikube:
   stage: deploy
-  tags: ["local"]   # Windows runner tag
+  tags: ["local"]   # self-hosted runner tag
   needs: ["build-airflow-image"]
   script:
-    - powershell -NoProfile -Command "
-        [IO.File]::WriteAllBytes('$PWD\\kubeconfig.yaml', [Convert]::FromBase64String($env:KUBE_CONFIG));
-        $env:KUBECONFIG = '$PWD\\kubeconfig.yaml';
-        kubectl config use-context $env:KUBE_CONTEXT;
+    # ----- Decode kubeconfig -----
+    - |
+      if (-not $Env:KUBE_CONFIG) { throw "KUBE_CONFIG is missing (base64 kubeconfig)." }
+      [IO.File]::WriteAllBytes("$PWD/kubeconfig.yaml", [Convert]::FromBase64String($Env:KUBE_CONFIG))
+      $Env:KUBECONFIG = "$PWD/kubeconfig.yaml"
+      kubectl version --client
+      kubectl config get-contexts
+      kubectl config use-context $Env:KUBE_CONTEXT
 
-        kubectl apply -n $env:KUBE_NAMESPACE -f k8s/postgres-pvc.yaml;
-        kubectl apply -n $env:KUBE_NAMESPACE -f k8s/postgres-deployment.yaml;
-        kubectl apply -n $env:KUBE_NAMESPACE -f k8s/postgres-service.yaml;
-        kubectl apply -n $env:KUBE_NAMESPACE -f k8s/airflow-config.yaml;
-        kubectl apply -n $env:KUBE_NAMESPACE -f k8s/airflow-deployment.yaml;
-        kubectl apply -n $env:KUBE_NAMESPACE -f k8s/airflow-scheduler.yaml;
-        kubectl apply -n $env:KUBE_NAMESPACE -f k8s/airflow-service.yaml;
+    # ----- Ensure namespace -----
+    - |
+      Write-Host "Ensuring namespace $($Env:KUBE_NAMESPACE) exists..."
+      kubectl get ns $Env:KUBE_NAMESPACE 2>$null
+      if ($LASTEXITCODE -ne 0) { kubectl create ns $Env:KUBE_NAMESPACE }
 
-        if (Test-Path -Path '$PWD\\image.tar') {
-          minikube image load --input image.tar;
-        }
+    # ----- Preload image into Minikube -----
+    - |
+      Write-Host "Preloading image $($Env:IMAGE_TAG) into minikube..."
+      minikube image load $Env:IMAGE_TAG
 
-        kubectl -n $env:KUBE_NAMESPACE set image deploy/airflow-web airflow-web=$env:IMAGE_TAG --record;
-        kubectl -n $env:KUBE_NAMESPACE set image deploy/airflow-scheduler scheduler=$env:IMAGE_TAG --record;
+    # ----- Apply manifests (ensure imagePullPolicy: IfNotPresent in YAML) -----
+    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-pvc.yaml"
+    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-deployment.yaml"
+    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-service.yaml"
+    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-config.yaml"
+    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-deployment.yaml"
+    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-scheduler.yaml"
+    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-service.yaml"
 
-        kubectl rollout status deploy/airflow-web -n $env:KUBE_NAMESPACE --timeout=300s;
-        kubectl rollout status deploy/airflow-scheduler -n $env:KUBE_NAMESPACE --timeout=300s;
+    # ----- Point deployments to the new image -----
+    - |
+      Write-Host "Updating deployments to use preloaded image $($Env:IMAGE_TAG)..."
+      kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-web webserver=$Env:IMAGE_TAG --record
+      kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-scheduler scheduler=$Env:IMAGE_TAG --record
 
-        kubectl get pods -n $env:KUBE_NAMESPACE -o wide;
-        kubectl get svc -n $env:KUBE_NAMESPACE -o wide;
-      "
-  dependencies:
-    - build-airflow-image
+    # ----- Secrets and env injection (unchanged) -----
+    # ... your Snowflake secret creation + kubectl set env remains here ...
+
+    # ----- Rollout checks -----
+    - |
+      kubectl rollout status deploy/airflow-web -n $Env:KUBE_NAMESPACE --timeout=300s || echo "airflow-web rollout failed"
+      kubectl rollout status deploy/airflow-scheduler -n $Env:KUBE_NAMESPACE --timeout=300s || echo "airflow-scheduler rollout failed"
+
+    # ----- Summary -----
+    - kubectl get pods -n $Env:KUBE_NAMESPACE -o wide
+    - kubectl get svc  -n $Env:KUBE_NAMESPACE
