@@ -1,4 +1,1 @@
-minikube ssh -- nslookup registry.gitlab.com  # should resolve quickly
-kubectl rollout restart deploy airflow-web -n airflow
-kubectl rollout restart deploy airflow-scheduler -n airflow
-kubectl -n airflow logs deploy/airflow-scheduler --tail=200
+kubectl -n kube-system run dns-test --rm -i --tty --image=busybox --restart=Never -- /bin/sh -c "nslookup registry.gitlab.com 8.8.8.8 || nslookup registry.gitlab.com || echo NSLOOKUP-FAILED"
