@@ -1,0 +1,2 @@
+kubectl -n airflow get deploy airflow-web -o jsonpath='{.spec.template.spec.containers[*].name}{"\n"}{.spec.template.spec.containers[*].image}{"\n"}'
+kubectl -n airflow get deploy airflow-scheduler -o jsonpath='{.spec.template.spec.containers[*].name}{"\n"}{.spec.template.spec.containers[*].image}{"\n"}'
