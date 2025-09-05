@@ -3,47 +3,39 @@ stages:
   - deploy
 
 variables:
-  KUBE_NAMESPACE: "airflow"
-  KUBE_CONTEXT: "minikube"
   IMAGE_TAG: "$CI_REGISTRY_IMAGE/airflow:$CI_COMMIT_SHORT_SHA"
-  # If you still want to push to registry, set PUSH_REGISTRY=true in CI/CD variables (optional)
   PUSH_REGISTRY: "false"
 
-# Build & save image
-build-airflow-image:
+# -------------- Windows build job (for Windows shell executor with Docker installed) --------------
+build-airflow-image-windows:
   stage: build
-  image: docker:latest
-  services:
-    - docker:dind
-  variables:
-    DOCKER_DRIVER: overlay2
+  tags: ["local"]        # your Windows runner tag
   script:
-    - echo "Logging in to GitLab container registry (optional push)..."
-    # (optional) docker login if you want to push
-    - |
-      if [ "$PUSH_REGISTRY" = "true" ]; then
-        docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-      fi
-    - echo "Building image $IMAGE_TAG ..."
-    - docker build -t "$IMAGE_TAG" .
-    # Save image to tar for minikube image load in the next job
-    - echo "Saving image to artifact image.tar ..."
-    - docker save -o image.tar "$IMAGE_TAG"
-    # (optional) push to registry if you enabled PUSH_REGISTRY
-    - |
-      if [ "$PUSH_REGISTRY" = "true" ]; then
-        docker push "$IMAGE_TAG"
-      fi
+    - powershell -NoProfile -Command "
+        Write-Host 'Running on Windows runner - building with host Docker...';
+        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'docker CLI not found on runner. Install Docker Desktop or ensure docker is in PATH.' };
+        Write-Host 'Building image: $env:IMAGE_TAG';
+        docker build -t $env:IMAGE_TAG .;
+        if ($LASTEXITCODE -ne 0) { throw 'docker build failed' };
+        Write-Host 'Saving image to image.tar';
+        docker save -o image.tar $env:IMAGE_TAG;
+        if (-not (Test-Path -Path image.tar)) { throw 'image.tar not created' };
+        if ($env:PUSH_REGISTRY -eq 'true') {
+          Write-Host 'Pushing to registry (optional)';
+          docker login -u $env:CI_REGISTRY_USER -p $env:CI_REGISTRY_PASSWORD $env:CI_REGISTRY;
+          docker push $env:IMAGE_TAG;
+        }
+      "
   artifacts:
     paths:
       - image.tar
-      - build.env
     expire_in: 1h
     reports:
-      dotenv: 
+      dotenv:
         - build.env
   after_script:
     - echo IMAGE_TAG="$IMAGE_TAG" > build.env
+
 
 # Deploy to Minikube (Windows runner with PowerShell)
 deploy-minikube:
