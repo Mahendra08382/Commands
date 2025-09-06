@@ -1,2 +1,1 @@
-$pod = "airflow-scheduler-cbcd557d8-wwjtq"   # replace with your pod name
-kubectl -n airflow get pod $pod -o yaml | Select-String -Pattern "volumeMounts","volumes" -Context 0,6
+kubectl -n $ns get deploy airflow-scheduler -o yaml | Select-String -Pattern "imagePullPolicy" -Context 0,1
