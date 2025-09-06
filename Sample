@@ -1,3 +1,13 @@
 minikube image ls
 minikube image rm myregistry/my-airflow:the-old-tag
 kubectl -n airflow rollout restart deploy/airflow-scheduler
+
+
+$ns="airflow"
+
+# what image is the scheduler deployment configured to use?
+kubectl -n $ns get deploy airflow-scheduler -o jsonpath='{.spec.template.spec.containers[*].image}'; Write-Host
+
+# what image is actually running in the pod(s)?
+kubectl -n $ns get pods -o wide | Format-Table NAME,IMAGE -AutoSize
+
