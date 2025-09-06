@@ -1,84 +1,9 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: airflow-scheduler
-  namespace: airflow
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: airflow-scheduler
-  template:
-    metadata:
-      labels:
-        app: airflow-scheduler
-    spec:
-      volumes:
-        - name: dags-src
-          configMap:
-            name: airflow-dags
-        - name: plugins-src
-          configMap:
-            name: airflow-plugins
-            optional: true
-        - name: dags
-          emptyDir: {}          # real folder; no symlinks
-        - name: plugins
-          emptyDir: {}          # real folder; no symlinks
-      initContainers:
-        - name: wait-for-postgres
-          image: postgres:15
-          imagePullPolicy: Always
-          command: ["bash","-lc","until pg_isready -h postgres -p 5432 -U airflow; do echo waiting for postgres; sleep 2; done"]
-        - name: prepare-dags
-          image: alpine:3.20
-          imagePullPolicy: Always
-          command: ["sh","-c"]
-          args:
-            - |
-              set -e
-              rm -rf /work/dags/* || true
-              # -L follows links in projected volumes, removing symlink loops
-              cp -rL /src/dags/. /work/dags/
-          volumeMounts:
-            - name: dags-src
-              mountPath: /src/dags
-            - name: dags
-              mountPath: /work/dags
-        - name: prepare-plugins
-          image: alpine:3.20
-          imagePullPolicy: Always
-          command: ["sh","-c"]
-          args:
-            - |
-              set -e
-              rm -rf /work/plugins/* || true
-              cp -rL /src/plugins/. /work/plugins/ || true
-          volumeMounts:
-            - name: plugins-src
-              mountPath: /src/plugins
-            - name: plugins
-              mountPath: /work/plugins
-      containers:
-        - name: scheduler
-          image: apache/airflow:2.8.4-python3.11
-          imagePullPolicy: Always
-          envFrom:
-            - configMapRef:
-                name: airflow-config
-          env:
-            - name: AIRFLOW__CORE__DAGS_FOLDER
-              value: /opt/airflow/dags
-            - name: AIRFLOW__CORE__PLUGINS_FOLDER
-              value: /opt/airflow/plugins
-          command: ["bash","-lc"]
-          args:
-            - |
-              set -e
-              pip install --no-cache-dir psycopg2-binary apache-airflow-providers-postgres
-              exec airflow scheduler
-          volumeMounts:
-            - name: dags
-              mountPath: /opt/airflow/dags        # mounts the de-symlinked copy
-            - name: plugins
-              mountPath: /opt/airflow/plugins
+# get scheduler pod name
+$pod = kubectl -n $ns get pods -l app=airflow-scheduler -o jsonpath='{.items[0].metadata.name}'
+Write-Output "POD: $pod"
+
+# show mounts (look for dags, dags-src)
+kubectl -n $ns exec -it $pod -- sh -c "mount | grep /opt/airflow/dags || true; mount | grep /src/dags || true" 
+
+# list contents inside the mounts
+kubectl -n $ns exec -it $pod -- sh -c "ls -la /src/dags || true; ls -la /work/dags || true; ls -la /opt/airflow/dags || true"
