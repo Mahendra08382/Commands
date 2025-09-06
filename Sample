@@ -1,5 +1,18 @@
+# create dir and hosts.toml that disables cert verification for registry.gitlab.com
+minikube ssh "sudo mkdir -p /etc/containerd/certs.d/registry.gitlab.com"
+minikube ssh "sudo tee /etc/containerd/certs.d/registry.gitlab.com/hosts.toml > /dev/null <<'EOF'
+[host.\"https://registry.gitlab.com\"]
+  skip_verify = true
+EOF"
+# restart containerd
+minikube ssh "sudo systemctl restart containerd"
+# test pull
 minikube ssh "sudo ctr images pull registry.gitlab.com/<your-path>/<your-image>:<tag>"
-minikube ssh "sudo ctr images ls | grep <your-image> || true"
+
+
+
+
+
 
  
 
