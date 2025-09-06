@@ -40,11 +40,11 @@ build-airflow-image:
 	
 deploy-minikube:
   stage: deploy
-  tags: ["local"]   # your Windows self-hosted runner tag
+  tags: ["local"]   # must match your Windows runner tag
   needs: ["build-airflow-image"]
   script:
-    # ----- Decode kubeconfig -----
     - |
+      # ----- Decode kubeconfig -----
       if (-not $Env:KUBE_CONFIG) { throw "KUBE_CONFIG is missing (base64 kubeconfig)." }
       [IO.File]::WriteAllBytes("$PWD/kubeconfig.yaml", [Convert]::FromBase64String($Env:KUBE_CONFIG))
       $Env:KUBECONFIG = "$PWD/kubeconfig.yaml"
@@ -52,40 +52,13 @@ deploy-minikube:
       kubectl config get-contexts
       kubectl config use-context $Env:KUBE_CONTEXT
 
-    # ----- Ensure namespace -----
     - |
+      # ----- Ensure namespace -----
       Write-Host "Ensuring namespace $($Env:KUBE_NAMESPACE) exists..."
       kubectl get ns $Env:KUBE_NAMESPACE 2>$null
       if ($LASTEXITCODE -ne 0) { kubectl create ns $Env:KUBE_NAMESPACE }
 
-    # ----- Create/Update Snowflake Secret from CI vars -----
-    - |
-      if (-not $Env:SNOWFLAKE_ACCOUNT)  { throw "SNOWFLAKE_ACCOUNT missing" }
-      if (-not $Env:SNOWFLAKE_USER)     { throw "SNOWFLAKE_USER missing" }
-      if (-not $Env:SNOWFLAKE_PASSWORD) { throw "SNOWFLAKE_PASSWORD missing" }
-      if (-not $Env:SNOWFLAKE_ROLE)     { $Env:SNOWFLAKE_ROLE = "ACCOUNTADMIN" }
-      if (-not $Env:SNOWFLAKE_WAREHOUSE){ throw "SNOWFLAKE_WAREHOUSE missing" }
-      if (-not $Env:SNOWFLAKE_DATABASE) { throw "SNOWFLAKE_DATABASE missing" }
-      if (-not $Env:SNOWFLAKE_SCHEMA)   { throw "SNOWFLAKE_SCHEMA missing" }
-      $secretYaml = @"
-apiVersion: v1
-kind: Secret
-metadata:
-  name: snowflake-secrets
-  namespace: $Env:KUBE_NAMESPACE
-type: Opaque
-stringData:
-  account: "$($Env:SNOWFLAKE_ACCOUNT)"
-  user: "$($Env:SNOWFLAKE_USER)"
-  password: "$($Env:SNOWFLAKE_PASSWORD)"
-  role: "$($Env:SNOWFLAKE_ROLE)"
-  warehouse: "$($Env:SNOWFLAKE_WAREHOUSE)"
-  database: "$($Env:SNOWFLAKE_DATABASE)"
-  schema: "$($Env:SNOWFLAKE_SCHEMA)"
-"@
-      $secretYaml | kubectl apply -f -
-
-    # ----- Apply your manifests -----
+    # ----- Apply manifests -----
     - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-pvc.yaml"
     - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-deployment.yaml"
     - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-service.yaml"
@@ -97,24 +70,10 @@ stringData:
     # ----- Point deployments to the new image -----
     - |
       Write-Host "Updating images to $($Env:IMAGE_TAG) ..."
-      kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-web webserver=$Env:IMAGE_TAG --record
+      kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-web airflow-web=$Env:IMAGE_TAG --record
       kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-scheduler scheduler=$Env:IMAGE_TAG --record
 
-    # ----- Inject Snowflake env into deployments from Secret -----
-    - |
-      foreach ($target in @("deploy/airflow-web","deploy/airflow-scheduler")) {
-        kubectl -n $Env:KUBE_NAMESPACE set env $target `
-          --keys-from=secret/snowflake-secrets `
-          SNOWFLAKE_ACCOUNT=$(kubectl -n $Env:KUBE_NAMESPACE get secret snowflake-secrets -o jsonpath='{.data.account}' | % { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }) `
-          SNOWFLAKE_USER=$(kubectl -n $Env:KUBE_NAMESPACE get secret snowflake-secrets -o jsonpath='{.data.user}' | % { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }) `
-          SNOWFLAKE_PASSWORD=$(kubectl -n $Env:KUBE_NAMESPACE get secret snowflake-secrets -o jsonpath='{.data.password}' | % { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }) `
-          SNOWFLAKE_ROLE=$(kubectl -n $Env:KUBE_NAMESPACE get secret snowflake-secrets -o jsonpath='{.data.role}' | % { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }) `
-          SNOWFLAKE_WAREHOUSE=$(kubectl -n $Env:KUBE_NAMESPACE get secret snowflake-secrets -o jsonpath='{.data.warehouse}' | % { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }) `
-          SNOWFLAKE_DATABASE=$(kubectl -n $Env:KUBE_NAMESPACE get secret snowflake-secrets -o jsonpath='{.data.database}' | % { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }) `
-          SNOWFLAKE_SCHEMA=$(kubectl -n $Env:KUBE_NAMESPACE get secret snowflake-secrets -o jsonpath='{.data.schema}' | % { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) })
-      }
-
-    # ----- Rollout status -----
+    # ----- Rollout status (PowerShell-safe; no '||') -----
     - |
       Write-Host "Waiting for airflow-web rollout..."
       $p = Start-Process -FilePath "kubectl" -ArgumentList @("rollout","status","deploy/airflow-web","-n",$Env:KUBE_NAMESPACE,"--timeout=300s") -NoNewWindow -PassThru -Wait
