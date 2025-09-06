@@ -1,5 +1,3 @@
-kubectl get deploy airflow-scheduler -n airflow -o yaml
-
 apiVersion: v1
 kind: Service
 metadata:
@@ -7,11 +5,7 @@ metadata:
   namespace: airflow
 spec:
   ports:
-  - port: 8793
-    targetPort: 8793
-    name: http-log
+    - port: 8793
+      targetPort: 8793
   selector:
-    <match your scheduler pod labels>
-
-
-kubectl exec -n airflow pod/<webserver-pod> -- curl -v --max-time 5 http://airflow-scheduler.airflow.svc.cluster.local:8793/
+    component: scheduler   # <-- must match your pod label
