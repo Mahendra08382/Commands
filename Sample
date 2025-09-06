@@ -1,3 +1,9 @@
+minikube ssh "sudo mkdir -p /etc/containerd/certs.d/registry.gitlab.com"
+minikube ssh "sudo tee /etc/containerd/certs.d/registry.gitlab.com/hosts.toml > /dev/null <<'EOF'
+[host.\"https://registry.gitlab.com\"]
+  skip_verify = true
+EOF"
+
 minikube ssh "ls -l /usr/local/share/ca-certificates || true"
 minikube ssh "sudo ls -l /etc/ssl/certs | grep corp-ca || true"
 
