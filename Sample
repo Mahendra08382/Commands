@@ -1,6 +1,11 @@
-minikube ssh "ls -l /etc/containerd/certs.d/registry.gitlab.com || true"
-minikube ssh "sudo cat /etc/containerd/certs.d/registry.gitlab.com/hosts.toml || true"
+# 2) Restart containerd and show short status
+minikube ssh "sudo systemctl restart containerd && sudo systemctl status containerd --no-pager | sed -n '1,6p'"
 
+# 3) Try pulling the image (replace with your real image)
+minikube ssh "sudo ctr images pull registry.gitlab.com/<your-path>/<your-image>:<tag>"
+
+# 4) If pull fails, print recent containerd logs (TLS errors will show here)
+minikube ssh "sudo journalctl -u containerd --since '5 minutes ago' -n 200 --no-pager | sed -n '1,200p'"
 minikube ssh "ls -l /usr/local/share/ca-certificates || true"
 minikube ssh "sudo ls -l /etc/ssl/certs | grep corp-ca || true"
 
