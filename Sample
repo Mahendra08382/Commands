@@ -1,4 +1,6 @@
-kubectl logs -n airflow pod/<scheduler-pod-name> -c scheduler --tail=200
+kubectl exec -n airflow pod/<scheduler-pod> -- ls -l /opt/airflow/dags
+kubectl exec -n airflow pod/<scheduler-pod> -- cat /opt/airflow/dags/sample_dag.py | head -n 20
+kubectl exec -n airflow pod/<webserver-pod> -- cat /opt/airflow/dags/sample_dag.py | head -n 20
 
 
 # 3) Try pulling the image (replace with your real image)
