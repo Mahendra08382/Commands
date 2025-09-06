@@ -1,4 +1,12 @@
-minikube ssh "sudo journalctl -u containerd --since '5 minutes ago' -n 200 --no-pager | sed -n '1,200p'"
+minikube ssh "ls -l /usr/local/share/ca-certificates || true"
+minikube ssh "sudo ls -l /etc/ssl/certs | grep corp-ca || true"
+
+minikube ssh "sudo update-ca-certificates --verbose"
+
+
+minikube ssh "sudo openssl x509 -in /usr/local/share/ca-certificates/corp-ca.crt -noout -text | sed -n '1,8p' || echo 'cannot read CA file'"
+
+minikube ssh "echo | openssl s_client -showcerts -servername registry.gitlab.com -connect registry.gitlab.com:443 2>/dev/null | sed -n '1,120p'"
 
 
 
