@@ -1,6 +1,7 @@
-minikube ssh "sudo systemctl status containerd --no-pager"
-minikube ssh "ps -ef | grep -E 'dockerd|containerd' | grep -v grep || true"
+minikube ssh "sudo ctr images pull registry.gitlab.com/<your-path>/<your-image>:<tag>"
+minikube ssh "sudo ctr images ls | grep <your-image> || true"
 
+ 
 
 
 # 1. Create registry config dir
