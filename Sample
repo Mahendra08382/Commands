@@ -1,2 +1,1 @@
-kubectl describe pod -n airflow $(kubectl get pod -n airflow -l component=scheduler -o jsonpath='{.items[0].metadata.name}') | sed -n '1,200p'
-kubectl describe pod -n airflow $(kubectl get pod -n airflow -l component=webserver -o jsonpath='{.items[0].metadata.name}') | sed -n '1,200p'
+kubectl -n airflow exec -it $pod -- sh -c "mount | grep /opt/airflow/dags || true"
