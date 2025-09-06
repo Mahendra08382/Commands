@@ -12,3 +12,6 @@ spec:
     name: http-log
   selector:
     <match your scheduler pod labels>
+
+
+kubectl exec -n airflow pod/<webserver-pod> -- curl -v --max-time 5 http://airflow-scheduler.airflow.svc.cluster.local:8793/
