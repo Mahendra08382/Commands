@@ -1,1 +1,1 @@
-kubectl apply -f scheduler-service.yaml
+kubectl port-forward -n airflow pod/<webserver-pod> 8080:8080
