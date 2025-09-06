@@ -1,1 +1,2 @@
-kubectl -n airflow exec -it $pod -- sh -c "mount | grep /opt/airflow/dags || true"
+$pod = "airflow-scheduler-cbcd557d8-wwjtq"   # replace with your pod name
+kubectl -n airflow get pod $pod -o yaml | Select-String -Pattern "volumeMounts","volumes" -Context 0,6
