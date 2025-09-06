@@ -1,40 +1,17 @@
-deploy-minikube:
-  stage: deploy
-  tags: ["local"]
-  needs: ["build-airflow-image"]
-  script:
-    - |
-      # ----- Decode kubeconfig -----
-      if (-not $Env:KUBE_CONFIG) { throw "KUBE_CONFIG is missing (base64 kubeconfig)." }
-      [IO.File]::WriteAllBytes("$PWD/kubeconfig.yaml", [Convert]::FromBase64String($Env:KUBE_CONFIG))
-      $Env:KUBECONFIG = "$PWD/kubeconfig.yaml"
-      kubectl config use-context $Env:KUBE_CONTEXT
-
-    # ----- Ensure namespace -----
-    - kubectl get ns $Env:KUBE_NAMESPACE 2>$null
-    - if ($LASTEXITCODE -ne 0) { kubectl create ns $Env:KUBE_NAMESPACE }
-
-    # ----- Apply manifests -----
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-pvc.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-deployment.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-service.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-config.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-deployment.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-scheduler.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-service.yaml"
-
-    # ----- Update image -----
-    - kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-web airflow-web=$Env:IMAGE_TAG --record
-    - kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-scheduler scheduler=$Env:IMAGE_TAG --record
-
     # ----- Update DAGs ConfigMap -----
-    - echo "Updating airflow-dags ConfigMap..."
+    - Write-Host "Updating airflow-dags ConfigMap..."
     - kubectl -n $Env:KUBE_NAMESPACE create configmap airflow-dags --from-file=dags/ --dry-run=client -o yaml | kubectl apply -f -
 
     # ----- Restart deployments so initContainers reload DAGs -----
+    - Write-Host "Restarting Airflow deployments..."
     - kubectl -n $Env:KUBE_NAMESPACE rollout restart deploy/airflow-scheduler
     - kubectl -n $Env:KUBE_NAMESPACE rollout restart deploy/airflow-web
 
-    # ----- Wait for rollout -----
-    - kubectl rollout status deploy/airflow-web -n $Env:KUBE_NAMESPACE --timeout=300s || echo "web rollout failed"
-    - kubectl rollout status deploy/airflow-scheduler -n $Env:KUBE_NAMESPACE --timeout=300s || echo "scheduler rollout failed"
+    # ----- Wait for rollouts (PowerShell-safe, no '||') -----
+    - Write-Host "Waiting for airflow-scheduler rollout..."
+    - $p = Start-Process -FilePath "kubectl" -ArgumentList @("rollout","status","deploy/airflow-scheduler","-n",$Env:KUBE_NAMESPACE,"--timeout=300s") -NoNewWindow -PassThru -Wait
+    - if ($p.ExitCode -ne 0) { Write-Warning "airflow-scheduler rollout failed" }
+
+    - Write-Host "Waiting for airflow-web rollout..."
+    - $p = Start-Process -FilePath "kubectl" -ArgumentList @("rollout","status","deploy/airflow-web","-n",$Env:KUBE_NAMESPACE,"--timeout=300s") -NoNewWindow -PassThru -Wait
+    - if ($p.ExitCode -ne 0) { Write-Warning "airflow-web rollout failed" }
