@@ -6,30 +6,23 @@ build-airflow-image:
       alias: docker-dind
   variables:
     DOCKER_DRIVER: overlay2
-    # Use the DinD daemon without TLS (simple for CI); keep DOCKER_TLS_CERTDIR empty
-    DOCKER_TLS_CERTDIR: ""
-    # Point the docker client to the DinD service
-    DOCKER_HOST: "tcp://docker-dind:2375"
+    DOCKER_TLS_CERTDIR: ""        # disable DinD TLS complexity
+    DOCKER_HOST: tcp://docker-dind:2375
   before_script:
-    # --- install company CA into job container & into docker certs.d so docker daemon trusts registry ---
-    # CORP_CA_B64 must be a protected GitLab variable (base64 of corp-root.crt)
+    # --- Install company CA from GitLab CI variable (CORP_CA_B64) ---
     - mkdir -p /etc/docker/certs.d/registry.gitlab.com
     - echo "$CORP_CA_B64" | base64 -d > /tmp/corp-root.crt
-    # put a copy where system CAs live (Debian/Alpine: try both)
     - cp /tmp/corp-root.crt /usr/local/share/ca-certificates/corp-root.crt || true
     - cp /tmp/corp-root.crt /etc/ssl/certs/corp-root.crt || true
-    # docker-specific trust for the registry
     - cp /tmp/corp-root.crt /etc/docker/certs.d/registry.gitlab.com/ca.crt
-    # update CA store where available
     - update-ca-certificates || true
-    # debug: show the issuer we see when contacting the registry (optional)
+    # Debug: show what cert we see from registry (issuer/subject only)
     - |
-      echo "---- curl output (show cert issuer / connection) ----"
-      apk add --no-cache openssl curl >/dev/null 2>&1 || true
       if command -v openssl >/dev/null 2>&1; then
         echo | openssl s_client -showcerts -servername registry.gitlab.com -connect registry.gitlab.com:443 2>/dev/null | awk '/subject=|issuer=/' || true
       else
-        curl -v https://registry.gitlab.com/v2/ 2>&1 | sed -n '1,120p' || true
+        apk add --no-cache openssl >/dev/null 2>&1 || true
+        echo | openssl s_client -showcerts -servername registry.gitlab.com -connect registry.gitlab.com:443 2>/dev/null | awk '/subject=|issuer=/' || true
       fi
   script:
     - echo "Logging in to GitLab container registry..."
@@ -37,52 +30,3 @@ build-airflow-image:
     - echo "Building image $IMAGE_TAG ..."
     - docker build -t "$IMAGE_TAG" .
     - docker push "$IMAGE_TAG"
-	
-deploy-minikube:
-  stage: deploy
-  tags: ["local"]   # must match your Windows runner tag
-  needs: ["build-airflow-image"]
-  script:
-    - |
-      # ----- Decode kubeconfig -----
-      if (-not $Env:KUBE_CONFIG) { throw "KUBE_CONFIG is missing (base64 kubeconfig)." }
-      [IO.File]::WriteAllBytes("$PWD/kubeconfig.yaml", [Convert]::FromBase64String($Env:KUBE_CONFIG))
-      $Env:KUBECONFIG = "$PWD/kubeconfig.yaml"
-      kubectl version --client
-      kubectl config get-contexts
-      kubectl config use-context $Env:KUBE_CONTEXT
-
-    - |
-      # ----- Ensure namespace -----
-      Write-Host "Ensuring namespace $($Env:KUBE_NAMESPACE) exists..."
-      kubectl get ns $Env:KUBE_NAMESPACE 2>$null
-      if ($LASTEXITCODE -ne 0) { kubectl create ns $Env:KUBE_NAMESPACE }
-
-    # ----- Apply manifests -----
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-pvc.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-deployment.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-service.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-config.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-deployment.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-scheduler.yaml"
-    - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/airflow-service.yaml"
-
-    # ----- Point deployments to the new image -----
-    - |
-      Write-Host "Updating images to $($Env:IMAGE_TAG) ..."
-      kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-web airflow-web=$Env:IMAGE_TAG --record
-      kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-scheduler scheduler=$Env:IMAGE_TAG --record
-
-    # ----- Rollout status (PowerShell-safe; no '||') -----
-    - |
-      Write-Host "Waiting for airflow-web rollout..."
-      $p = Start-Process -FilePath "kubectl" -ArgumentList @("rollout","status","deploy/airflow-web","-n",$Env:KUBE_NAMESPACE,"--timeout=300s") -NoNewWindow -PassThru -Wait
-      if ($p.ExitCode -ne 0) { Write-Warning "airflow-web rollout timed out or failed, continuing..." }
-
-      Write-Host "Waiting for airflow-scheduler rollout..."
-      $p = Start-Process -FilePath "kubectl" -ArgumentList @("rollout","status","deploy/airflow-scheduler","-n",$Env:KUBE_NAMESPACE,"--timeout=300s") -NoNewWindow -PassThru -Wait
-      if ($p.ExitCode -ne 0) { Write-Warning "airflow-scheduler rollout timed out or failed, continuing..." }
-
-    # ----- Summary -----
-    - kubectl get pods -n $Env:KUBE_NAMESPACE -o wide
-    - kubectl get svc  -n $Env:KUBE_NAMESPACE
