@@ -1,4 +1,5 @@
-minikube ssh "cat /var/lib/kubelet/kubeadm-flags.env | grep container-runtime"
+minikube ssh "sudo crictl info | grep runtimeType"
+
 
 
 minikube ssh "echo '{\"insecure-registries\":[\"registry.gitlab.com\"]}' | sudo tee /etc/docker/daemon.json"
