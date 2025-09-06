@@ -1,1 +1,39 @@
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\certs\corp-root.crt")) | Out-File -Encoding ASCII corp-root.b64.txt
+build-airflow-image:
+  stage: build
+  image: docker:24.0.9
+  services:
+    - name: docker:24.0.9-dind
+      alias: docker-dind
+  variables:
+    DOCKER_DRIVER: overlay2
+    # Use the DinD daemon without TLS (simple for CI); keep DOCKER_TLS_CERTDIR empty
+    DOCKER_TLS_CERTDIR: ""
+    # Point the docker client to the DinD service
+    DOCKER_HOST: "tcp://docker-dind:2375"
+  before_script:
+    # --- install company CA into job container & into docker certs.d so docker daemon trusts registry ---
+    # CORP_CA_B64 must be a protected GitLab variable (base64 of corp-root.crt)
+    - mkdir -p /etc/docker/certs.d/registry.gitlab.com
+    - echo "$CORP_CA_B64" | base64 -d > /tmp/corp-root.crt
+    # put a copy where system CAs live (Debian/Alpine: try both)
+    - cp /tmp/corp-root.crt /usr/local/share/ca-certificates/corp-root.crt || true
+    - cp /tmp/corp-root.crt /etc/ssl/certs/corp-root.crt || true
+    # docker-specific trust for the registry
+    - cp /tmp/corp-root.crt /etc/docker/certs.d/registry.gitlab.com/ca.crt
+    # update CA store where available
+    - update-ca-certificates || true
+    # debug: show the issuer we see when contacting the registry (optional)
+    - |
+      echo "---- curl output (show cert issuer / connection) ----"
+      apk add --no-cache openssl curl >/dev/null 2>&1 || true
+      if command -v openssl >/dev/null 2>&1; then
+        echo | openssl s_client -showcerts -servername registry.gitlab.com -connect registry.gitlab.com:443 2>/dev/null | awk '/subject=|issuer=/' || true
+      else
+        curl -v https://registry.gitlab.com/v2/ 2>&1 | sed -n '1,120p' || true
+      fi
+  script:
+    - echo "Logging in to GitLab container registry..."
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - echo "Building image $IMAGE_TAG ..."
+    - docker build -t "$IMAGE_TAG" .
+    - docker push "$IMAGE_TAG"
