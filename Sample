@@ -1,6 +1,25 @@
-$ns="airflow"
+@'
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          { "name": "scheduler", "imagePullPolicy": "Always" }
+        ],
+        "initContainers": [
+          { "name": "wait-for-postgres", "imagePullPolicy": "Always" },
+          { "name": "prepare-dags",     "imagePullPolicy": "Always" },
+          { "name": "prepare-plugins",  "imagePullPolicy": "Always" }
+        ]
+      }
+    }
+  }
+}
+'@ | Set-Content -Path .\patch-imagepull.json -Encoding UTF8
 
-# patch the scheduler container
-kubectl -n $ns patch deploy airflow-scheduler `
-  --type='json' `
-  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Always"}]'
+
+
+kubectl -n airflow patch deploy airflow-scheduler --patch (Get-Content .\patch-imagepull.json -Raw) --type=merge
+kubectl -n airflow rollout restart deploy/airflow-scheduler
+kubectl -n airflow rollout status deploy/airflow-scheduler --timeout=120s
+
