@@ -1,4 +1,14 @@
-minikube ssh "sudo crictl info | grep runtimeType"
+# 1. Create registry config dir
+minikube ssh "sudo mkdir -p /etc/containerd/certs.d/registry.gitlab.com"
+
+# 2. Configure skip TLS verification
+minikube ssh "sudo tee /etc/containerd/certs.d/registry.gitlab.com/hosts.toml > /dev/null <<'EOF'
+[host.\"https://registry.gitlab.com\"]
+  skip_verify = true
+EOF"
+
+# 3. Restart containerd
+minikube ssh "sudo systemctl restart containerd"
 
 
 
