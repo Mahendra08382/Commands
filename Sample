@@ -1,32 +1,5 @@
-build-airflow-image:
-  stage: build
-  image: docker:24.0.9
-  services:
-    - name: docker:24.0.9-dind
-      alias: docker-dind
-  variables:
-    DOCKER_DRIVER: overlay2
-    DOCKER_TLS_CERTDIR: ""        # disable DinD TLS complexity
-    DOCKER_HOST: tcp://docker-dind:2375
-  before_script:
-    # --- Install company CA from GitLab CI variable (CORP_CA_B64) ---
-    - mkdir -p /etc/docker/certs.d/registry.gitlab.com
-    - echo "$CORP_CA_B64" | base64 -d > /tmp/corp-root.crt
-    - cp /tmp/corp-root.crt /usr/local/share/ca-certificates/corp-root.crt || true
-    - cp /tmp/corp-root.crt /etc/ssl/certs/corp-root.crt || true
-    - cp /tmp/corp-root.crt /etc/docker/certs.d/registry.gitlab.com/ca.crt
-    - update-ca-certificates || true
-    # Debug: show what cert we see from registry (issuer/subject only)
-    - |
-      if command -v openssl >/dev/null 2>&1; then
-        echo | openssl s_client -showcerts -servername registry.gitlab.com -connect registry.gitlab.com:443 2>/dev/null | awk '/subject=|issuer=/' || true
-      else
-        apk add --no-cache openssl >/dev/null 2>&1 || true
-        echo | openssl s_client -showcerts -servername registry.gitlab.com -connect registry.gitlab.com:443 2>/dev/null | awk '/subject=|issuer=/' || true
-      fi
-  script:
-    - echo "Logging in to GitLab container registry..."
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-    - echo "Building image $IMAGE_TAG ..."
-    - docker build -t "$IMAGE_TAG" .
-    - docker push "$IMAGE_TAG"
+minikube ssh "echo '{\"insecure-registries\":[\"registry.gitlab.com\"]}' | sudo tee /etc/docker/daemon.json"
+minikube ssh "sudo systemctl restart docker"
+
+
+minikube ssh "docker pull registry.gitlab.com/<your-path>/<your-image>:<tag>"
