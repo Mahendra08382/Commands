@@ -1,7 +1,9 @@
-kubectl exec -n airflow pod/<scheduler-pod> -- ls -l /opt/airflow/dags
+kubectl exec -n airflow pod/<scheduler-pod> -- sh -c "stat -c '%y %n' /opt/airflow/dags/<your-dag.py> || ls -l /opt/airflow/dags/<your-dag.py>"
+kubectl exec -n airflow pod/<webserver-pod> -- sh -c "stat -c '%y %n' /opt/airflow/dags/<your-dag.py> || ls -l /opt/airflow/dags/<your-dag.py>"
 
+kubectl describe pod <scheduler-pod> -n airflow | sed -n '1,200p'
+kubectl describe pod <webserver-pod> -n airflow | sed -n '1,200p'
 
-kubectl exec -n airflow pod/<scheduler-pod> -- sh -c "sed -n '1,20p' /opt/airflow/dags/sample_dag.py"
 
 
 
