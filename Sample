@@ -1,4 +1,6 @@
-minikube ssh "sudo mkdir -p /etc/containerd/certs.d/registry.gitlab.com && sudo bash -lc 'printf \"[host.\\\"https://registry.gitlab.com\\\"]\\n  skip_verify = true\\n\" > /etc/containerd/certs.d/registry.gitlab.com/hosts.toml' && sudo chown root:root /etc/containerd/certs.d/registry.gitlab.com/hosts.toml && sudo chmod 644 /etc/containerd/certs.d/registry.gitlab.com/hosts.toml && sudo systemctl restart containerd && sudo systemctl status containerd --no-pager | sed -n \"1,6p\"'"
+minikube cp "C:\path\to\corp-ca.crt" /home/docker/corp-ca.crt
+minikube ssh "sudo mv /home/docker/corp-ca.crt /usr/local/share/ca-certificates/corp-ca.crt && sudo chown root:root /usr/local/share/ca-certificates/corp-ca.crt && sudo chmod 644 /usr/local/share/ca-certificates/corp-ca.crt && sudo update-ca-certificates --verbose && sudo systemctl restart containerd && sudo systemctl status containerd --no-pager | sed -n '1,6p'"
+
 
 
 # 3) Try pulling the image (replace with your real image)
