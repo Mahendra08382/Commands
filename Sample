@@ -1,4 +1,4 @@
-kubectl exec -n airflow pod/<scheduler-pod> -- ss -ltnp | grep 8793
+kubectl get deploy airflow-scheduler -n airflow -o yaml
 
 apiVersion: v1
 kind: Service
@@ -7,7 +7,8 @@ metadata:
   namespace: airflow
 spec:
   ports:
-    - port: 8793
-      targetPort: 8793
+  - port: 8793
+    targetPort: 8793
+    name: http-log
   selector:
-    component: scheduler   # <-- must match your pod label
+    <match your scheduler pod labels>
