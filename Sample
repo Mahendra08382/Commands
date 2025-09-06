@@ -1,35 +1,3 @@
-stages:
-  - build
-  - deploy
-  - dags       # 👈 add new stage
-
-variables:
-  KUBE_NAMESPACE: "airflow"
-  KUBE_CONTEXT: "minikube"
-  IMAGE_TAG: "$CI_REGISTRY_IMAGE/airflow:$CI_COMMIT_SHORT_SHA"
-
-# --- Build image ---
-build-airflow-image:
-  stage: build
-  image: docker:latest
-  services:
-    - docker:dind
-  variables:
-    DOCKER_DRIVER: overlay2
-  script:
-    - echo "Logging in to GitLab container registry..."
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-    - echo "Building image $IMAGE_TAG ..."
-    - docker build -t "$IMAGE_TAG" .
-    - docker push "$IMAGE_TAG"
-  artifacts:
-    reports:
-      dotenv:
-        - build.env
-  after_script:
-    - echo IMAGE_TAG="$IMAGE_TAG" > build.env
-
-# --- Deploy manifests & update image ---
 deploy-minikube:
   stage: deploy
   tags: ["local"]
@@ -42,10 +10,9 @@ deploy-minikube:
       $Env:KUBECONFIG = "$PWD/kubeconfig.yaml"
       kubectl config use-context $Env:KUBE_CONTEXT
 
-    - |
-      # ----- Ensure namespace -----
-      kubectl get ns $Env:KUBE_NAMESPACE 2>$null
-      if ($LASTEXITCODE -ne 0) { kubectl create ns $Env:KUBE_NAMESPACE }
+    # ----- Ensure namespace -----
+    - kubectl get ns $Env:KUBE_NAMESPACE 2>$null
+    - if ($LASTEXITCODE -ne 0) { kubectl create ns $Env:KUBE_NAMESPACE }
 
     # ----- Apply manifests -----
     - kubectl apply -n $Env:KUBE_NAMESPACE -f "k8s/postgres-pvc.yaml"
@@ -60,23 +27,14 @@ deploy-minikube:
     - kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-web airflow-web=$Env:IMAGE_TAG --record
     - kubectl -n $Env:KUBE_NAMESPACE set image deploy/airflow-scheduler scheduler=$Env:IMAGE_TAG --record
 
-    # ----- Rollout status -----
-    - kubectl rollout status deploy/airflow-web -n $Env:KUBE_NAMESPACE --timeout=300s || echo "web rollout failed"
-    - kubectl rollout status deploy/airflow-scheduler -n $Env:KUBE_NAMESPACE --timeout=300s || echo "scheduler rollout failed"
-
-# --- Update DAGs ConfigMap & restart pods ---
-deploy-dags:
-  stage: dags
-  tags: ["local"]
-  needs: ["deploy-minikube"]
-  script:
+    # ----- Update DAGs ConfigMap -----
     - echo "Updating airflow-dags ConfigMap..."
-    - kubectl -n $Env:KUBE_NAMESPACE create configmap airflow-dags --from-file=./dags/ --dry-run=client -o yaml | kubectl apply -f -
+    - kubectl -n $Env:KUBE_NAMESPACE create configmap airflow-dags --from-file=dags/ --dry-run=client -o yaml | kubectl apply -f -
 
-    - echo "Restarting Airflow pods so initContainers copy fresh DAGs..."
+    # ----- Restart deployments so initContainers reload DAGs -----
     - kubectl -n $Env:KUBE_NAMESPACE rollout restart deploy/airflow-scheduler
     - kubectl -n $Env:KUBE_NAMESPACE rollout restart deploy/airflow-web
 
-    - echo "Waiting for rollout..."
-    - kubectl rollout status deploy/airflow-scheduler -n $Env:KUBE_NAMESPACE --timeout=300s || echo "scheduler rollout failed"
+    # ----- Wait for rollout -----
     - kubectl rollout status deploy/airflow-web -n $Env:KUBE_NAMESPACE --timeout=300s || echo "web rollout failed"
+    - kubectl rollout status deploy/airflow-scheduler -n $Env:KUBE_NAMESPACE --timeout=300s || echo "scheduler rollout failed"
