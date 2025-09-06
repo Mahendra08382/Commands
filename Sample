@@ -1,12 +1,1 @@
-{
-  "builder": {
-    "gc": {
-      "defaultKeepStorage": "20GB"
-    },
-    "enabled": true
-  },
-  "experimental": false,
-  "insecure-registries": [
-    "registry.gitlab.com"
-  ]
-}
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\certs\corp-root.crt")) | Out-File -Encoding ASCII corp-root.b64.txt
