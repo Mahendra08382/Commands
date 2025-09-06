@@ -1,3 +1,8 @@
+minikube ssh "sudo systemctl status containerd --no-pager"
+minikube ssh "ps -ef | grep -E 'dockerd|containerd' | grep -v grep || true"
+
+
+
 # 1. Create registry config dir
 minikube ssh "sudo mkdir -p /etc/containerd/certs.d/registry.gitlab.com"
 
