@@ -1,17 +1,17 @@
-    # ----- Update DAGs ConfigMap -----
-    - Write-Host "Updating airflow-dags ConfigMap..."
-    - kubectl -n $Env:KUBE_NAMESPACE create configmap airflow-dags --from-file=dags/ --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n airflow get svc
+kubectl -n airflow describe svc airflow-scheduler
+kubectl -n airflow get endpoints airflow-scheduler -o yaml
 
-    # ----- Restart deployments so initContainers reload DAGs -----
-    - Write-Host "Restarting Airflow deployments..."
-    - kubectl -n $Env:KUBE_NAMESPACE rollout restart deploy/airflow-scheduler
-    - kubectl -n $Env:KUBE_NAMESPACE rollout restart deploy/airflow-web
 
-    # ----- Wait for rollouts (PowerShell-safe, no '||') -----
-    - Write-Host "Waiting for airflow-scheduler rollout..."
-    - $p = Start-Process -FilePath "kubectl" -ArgumentList @("rollout","status","deploy/airflow-scheduler","-n",$Env:KUBE_NAMESPACE,"--timeout=300s") -NoNewWindow -PassThru -Wait
-    - if ($p.ExitCode -ne 0) { Write-Warning "airflow-scheduler rollout failed" }
+kubectl -n airflow get pods -l component=scheduler --show-labels
+kubectl -n airflow get pod -l component=scheduler -o wide
+kubectl -n airflow describe pod <scheduler-pod-name>
+kubectl -n airflow get pod <scheduler-pod-name> -o yaml | yq '.spec.containers[].ports'
 
-    - Write-Host "Waiting for airflow-web rollout..."
-    - $p = Start-Process -FilePath "kubectl" -ArgumentList @("rollout","status","deploy/airflow-web","-n",$Env:KUBE_NAMESPACE,"--timeout=300s") -NoNewWindow -PassThru -Wait
-    - if ($p.ExitCode -ne 0) { Write-Warning "airflow-web rollout failed" }
+
+kubectl -n airflow logs <scheduler-pod-name> -c scheduler --tail=200
+
+
+kubectl -n airflow exec -it <webserver-pod> -- curl -v http://airflow-scheduler:8793/health || true
+# or test a real log endpoint path like:
+kubectl -n airflow exec -it <webserver-pod> -- curl -v "http://airflow-scheduler:8793/log?dag_id=sample&task_id=..&execution_date=.."
