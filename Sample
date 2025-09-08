@@ -1,17 +1,16 @@
-kubectl -n airflow get svc
-kubectl -n airflow describe svc airflow-scheduler
+# find controller owning the pod (shows ownerReferences)
+kubectl -n airflow get pod <scheduler-pod-name> -o jsonpath='{.metadata.ownerReferences[0].name}{"\n"}'
+
+
+kubectl -n airflow label deploy/<scheduler-deployment-name> component=scheduler --overwrite
+# or if it's a statefulset:
+kubectl -n airflow label sts/<scheduler-sts-name> component=scheduler --overwrite
+
+# restart to force pods to re-create with the new label
+kubectl -n airflow rollout restart deploy/<scheduler-deployment-name>
+# or for statefulset
+kubectl -n airflow rollout restart sts/<scheduler-sts-name>
+
+
 kubectl -n airflow get endpoints airflow-scheduler -o yaml
-
-
-kubectl -n airflow get pods -l component=scheduler --show-labels
-kubectl -n airflow get pod -l component=scheduler -o wide
-kubectl -n airflow describe pod <scheduler-pod-name>
-kubectl -n airflow get pod <scheduler-pod-name> -o yaml | yq '.spec.containers[].ports'
-
-
-kubectl -n airflow logs <scheduler-pod-name> -c scheduler --tail=200
-
-
-kubectl -n airflow exec -it <webserver-pod> -- curl -v http://airflow-scheduler:8793/health || true
-# or test a real log endpoint path like:
-kubectl -n airflow exec -it <webserver-pod> -- curl -v "http://airflow-scheduler:8793/log?dag_id=sample&task_id=..&execution_date=.."
+kubectl -n airflow get svc airflow-scheduler -o wide
