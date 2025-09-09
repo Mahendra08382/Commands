@@ -1,28 +1,10 @@
-apiVersion: v1
-kind: Service
-metadata:
-  name: airflow-scheduler
-  namespace: airflow
-spec:
-  type: ClusterIP
-  ports:
-    - name: logs
-      port: 8793
-      targetPort: 8793
-      protocol: TCP
-  selector:
-    # <-- replace the line below with the exact label on your scheduler pod:
-    app.kubernetes.io/component: scheduler
+# list pods with labels so you can see scheduler pod and a label to use as selector
+kubectl -n airflow get pods --show-labels
 
+# find scheduler pod name (if there is a label, this helps)
+kubectl -n airflow get pods -l app.kubernetes.io/component=scheduler --show-labels || true
 
-kubectl apply -f airflow-scheduler-svc.yaml
-
-
-kubectl -n airflow get svc airflow-scheduler -o wide
-kubectl -n airflow get endpoints airflow-scheduler -o yaml
-
-
-kubectl -n airflow rollout restart deploy/airflow-webserver
-# wait for ready pods and then refresh Airflow UI and open a task log
-kubectl -n airflow logs deploy/airflow-webserver --tail=100
-
+# if nothing returned above, list pods and inspect scheduler pod labels:
+kubectl -n airflow get pods -o wide
+# pick the scheduler pod name from previous output and then:
+kubectl -n airflow get pod <scheduler-pod-name> -o jsonpath='{.metadata.labels}' | jq .
