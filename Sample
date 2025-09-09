@@ -1,40 +1,217 @@
-@"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-web
+  namespace: airflow
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow-web
   template:
+    metadata:
+      labels:
+        app: airflow-web
     spec:
       volumes:
-      - name: airflow-logs
-        persistentVolumeClaim:
-          claimName: airflow-logs-pvc
-      containers:
-      - name: airflow-web
-        volumeMounts:
+        # Source (projected) volumes
+        - name: dags-src
+          configMap:
+            name: airflow-dags
+        - name: plugins-src
+          configMap:
+            name: airflow-plugins
+            optional: true
+        # Destination (real) folders with no symlinks
+        - name: dags
+          emptyDir: {}
+        - name: plugins
+          emptyDir: {}
+        # Shared logs volume (for LocalExecutor)
         - name: airflow-logs
-          mountPath: /opt/airflow/logs
-"@ > web-patch.yaml
+          persistentVolumeClaim:
+            claimName: airflow-logs-pvc
 
-kubectl -n airflow patch deploy airflow-web --patch "$(Get-Content -Raw web-patch.yaml)" --type=merge
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:15
+          command: ["bash","-lc","until pg_isready -h postgres -p 5432 -U airflow; do echo waiting for postgres; sleep 2; done"]
+        - name: prepare-dags
+          image: alpine:3.20
+          command: ["sh","-c"]
+          args:
+            - |
+              set -e
+              rm -rf /work/dags/* || true
+              # -L follows and de-references the projected-volume symlinks
+              cp -rL /src/dags/. /work/dags/
+          volumeMounts:
+            - name: dags-src
+              mountPath: /src/dags
+            - name: dags
+              mountPath: /work/dags
+        - name: prepare-plugins
+          image: alpine:3.20
+          command: ["sh","-c"]
+          args:
+            - |
+              set -e
+              rm -rf /work/plugins/* || true
+              cp -rL /src/plugins/. /work/plugins/ || true
+          volumeMounts:
+            - name: plugins-src
+              mountPath: /src/plugins
+            - name: plugins
+              mountPath: /work/plugins
+
+      containers:
+        - name: airflow-web
+          image: apache/airflow:2.8.4-python3.11
+          envFrom:
+            - configMapRef:
+                name: airflow-config
+          env:
+            - name: AIRFLOW__CORE__DAGS_FOLDER
+              value: /opt/airflow/dags
+            - name: AIRFLOW__CORE__PLUGINS_FOLDER
+              value: /opt/airflow/plugins
+            # Use local filesystem logging for LocalExecutor
+            - name: AIRFLOW__LOGGING__REMOTE_LOGGING
+              value: "false"
+            - name: AIRFLOW__CORE__BASE_LOG_FOLDER
+              value: /opt/airflow/logs
+          command: ["bash","-lc"]
+          args:
+            - |
+              set -e
+              pip install --no-cache-dir psycopg2-binary apache-airflow-providers-postgres
+              for i in {1..10}; do
+                airflow db upgrade && break || { echo "db upgrade failed, retry $i"; sleep 3; }
+              done
+              airflow users create \
+                --username admin \
+                --password admin123 \
+                --firstname Admin \
+                --lastname User \
+                --role Admin \
+                --email admin@example.com || true
+              exec airflow webserver --port 8080 --hostname 0.0.0.0
+          ports:
+            - containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          volumeMounts:
+            - name: dags
+              mountPath: /opt/airflow/dags
+            - name: plugins
+              mountPath: /opt/airflow/plugins
+            - name: airflow-logs
+              mountPath: /opt/airflow/logs
 
 
 
-kubectl -n airflow patch deploy airflow-web --type='json' -p '[{"op":"add","path":"/spec/template/spec/volumes/-","value":{"name":"airflow-logs","persistentVolumeClaim":{"claimName":"airflow-logs-pvc"}}},{"op":"add","path":"/spec/template/spec/containers/0/volumeMounts/-","value":{"name":"airflow-logs","mountPath":"/opt/airflow/logs"}}]'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+  namespace: airflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow-scheduler
+  template:
+    metadata:
+      labels:
+        app: airflow-scheduler
+    spec:
+      volumes:
+        - name: dags-src
+          configMap:
+            name: airflow-dags
+        - name: plugins-src
+          configMap:
+            name: airflow-plugins
+            optional: true
+        - name: dags
+          emptyDir: {}          # real folder; no symlinks
+        - name: plugins
+          emptyDir: {}          # real folder; no symlinks
+        - name: airflow-logs
+          persistentVolumeClaim:
+            claimName: airflow-logs-pvc
 
-kubectl -n airflow patch deploy airflow-scheduler --type='json' -p '[{"op":"add","path":"/spec/template/spec/volumes/-","value":{"name":"airflow-logs","persistentVolumeClaim":{"claimName":"airflow-logs-pvc"}}},{"op":"add","path":"/spec/template/spec/containers/0/volumeMounts/-","value":{"name":"airflow-logs","mountPath":"/opt/airflow/logs"}}]'
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:15
+          command: ["bash","-lc","until pg_isready -h postgres -p 5432 -U airflow; do echo waiting for postgres; sleep 2; done"]
+        - name: prepare-dags
+          image: alpine:3.20
+          command: ["sh","-c"]
+          args:
+            - |
+              set -e
+              rm -rf /work/dags/* || true
+              # -L follows links in projected volumes, removing symlink loops
+              cp -rL /src/dags/. /work/dags/
+          volumeMounts:
+            - name: dags-src
+              mountPath: /src/dags
+            - name: dags
+              mountPath: /work/dags
+        - name: prepare-plugins
+          image: alpine:3.20
+          command: ["sh","-c"]
+          args:
+            - |
+              set -e
+              rm -rf /work/plugins/* || true
+              cp -rL /src/plugins/. /work/plugins/ || true
+          volumeMounts:
+            - name: plugins-src
+              mountPath: /src/plugins
+            - name: plugins
+              mountPath: /work/plugins
 
-
-kubectl -n airflow set env deploy/airflow-web AIRFLOW__LOGGING__REMOTE_LOGGING=false AIRFLOW__CORE__BASE_LOG_FOLDER=/opt/airflow/logs
-kubectl -n airflow set env deploy/airflow-scheduler AIRFLOW__LOGGING__REMOTE_LOGGING=false AIRFLOW__CORE__BASE_LOG_FOLDER=/opt/airflow/logs
-
-
-
-
-kubectl -n airflow rollout restart deploy/airflow-scheduler
-kubectl -n airflow rollout restart deploy/airflow-web
-# wait until pods are ready
-kubectl -n airflow get pods -l app in (airflow-scheduler,airflow-web) -o wide --watch
-
-
-$web = kubectl -n airflow get pods --selector=app=airflow-web --no-headers -o custom-columns=NAME:.metadata.name
-kubectl -n airflow exec -it $web -- sh -c "ls -la /opt/airflow || echo '/opt/airflow not found'; ls -la /opt/airflow/logs || echo 'logs dir missing'"
+      containers:
+        - name: scheduler
+          image: apache/airflow:2.8.4-python3.11
+          envFrom:
+            - configMapRef:
+                name: airflow-config
+          env:
+            - name: AIRFLOW__CORE__DAGS_FOLDER
+              value: /opt/airflow/dags
+            - name: AIRFLOW__CORE__PLUGINS_FOLDER
+              value: /opt/airflow/plugins
+            - name: AIRFLOW__LOGGING__REMOTE_LOGGING
+              value: "false"
+            - name: AIRFLOW__CORE__BASE_LOG_FOLDER
+              value: /opt/airflow/logs
+          command: ["bash","-lc"]
+          args:
+            - |
+              set -e
+              pip install --no-cache-dir psycopg2-binary apache-airflow-providers-postgres
+              exec airflow scheduler
+          volumeMounts:
+            - name: dags
+              mountPath: /opt/airflow/dags        # mounts the de-symlinked copy
+            - name: plugins
+              mountPath: /opt/airflow/plugins
+            - name: airflow-logs
+              mountPath: /opt/airflow/logs
 
 
