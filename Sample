@@ -1,30 +1,20 @@
-kubectl -n $ns exec $pod -- sh -c "echo '--- head ---'; sed -n '1,8p' /tmp/corp-ca.crt || true; echo '--- openssl parse ---'; openssl x509 -in /tmp/corp-ca.crt -noout -text 2>/dev/null && echo 'PARSE_OK' || echo 'PARSE_FAIL'
-$ns="airflow"; $pod="airflow-web-56cdb58cd6-rf56w"
+# paths — edit if needed
+$orig = "C:/Users/tk270/apm0001970-ddm-ddm-datamesh/corp-ca.crt"
+$clean = "C:/Users/tk270/apm0001970-ddm-ddm-datamesh/corp-ca.clean.crt"
 
-# show first 8 lines (PEM starts with -----BEGIN CERTIFICATE-----)
-kubectl -n $ns exec $pod -- sh -c "sed -n '1,8p' /tmp/corp-ca.crt || true"
+# read raw, remove CR (\r) and any NULs, write out
+(Get-Content -Raw -Encoding UTF8 $orig) -replace "`r","" | Out-File -Encoding ascii -FilePath $clean
 
-# try to see if openssl can parse it (prints details if PEM/DER)
-kubectl -n $ns exec $pod -- sh -c "openssl x509 -in /tmp/corp-ca.crt -noout -text 2>/dev/null && echo 'parsed as PEM' || echo 'failed to parse as PEM'"
-kubectl -n $ns exec $pod -- sh -c "openssl x509 -inform der -in /tmp/corp-ca.crt -noout -text 2>/dev/null && echo 'parsed as DER' || echo 'failed to parse as DER'"
-
-
-$ns="airflow"; $pod="airflow-web-56cdb58cd6-rf56w"  # replace pod if needed
-# curl using the cert
-kubectl -n $ns exec $pod -- sh -c "curl -v --cacert /tmp/corp-ca.crt --max-time 10 https://pypi.org/simple/ 2>&1 | sed -n '1,80p'"
-
-$namespace  = "airflow"
-$pod        = "airflow-web-56cdb58cd6-rf56w"   # your pod
-$localCert  = "C:/Users/tk270/apm0001970-ddm-ddm-datamesh/corp-ca.crt"
-$tmpPath    = "/tmp/corp-ca.crt"
-
-# stream the file into /tmp inside the pod (works even for non-root)
-Get-Content -Raw -Encoding Byte $localCert | kubectl exec -i -n $namespace $pod -- sh -c "cat > $tmpPath && chmod 644 $tmpPath"
-
-# verify it exists
-kubectl -n $namespace exec $pod -- sh -c "ls -l $tmpPath || true"
+Write-Output "Cleaned PEM saved to: $clean"
 
 
-kubectl -n $namespace exec $pod -- sh -c "chmod 644 $targetPath && if command -v update-ca-certificates >/dev/null 2>&1; then update-ca-certificates; else apk add --no-cache ca-certificates >/dev/null 2>&1 && update-ca-certificates; fi"
+$namespace = "airflow"
+$pod = "airflow-web-56cdb58cd6-rf56w"   # replace with your actual pod
+$remote = "/tmp/corp-ca.clean.crt"
+$localClean = "C:/Users/tk270/apm0001970-ddm-ddm-datamesh/corp-ca.clean.crt"
 
-kubectl -n $namespace exec -it $pod -- curl -v https://pypi.org/simple/ --max-time 10
+# stream bytes into pod (works for binary or text)
+Get-Content -Raw -Encoding Byte $localClean | kubectl exec -i -n $namespace $pod -- sh -c "cat > $remote && chmod 644 $remote && echo 'wrote file:' && ls -l $remote"
+
+
+kubectl -n $namespace exec $pod -- sh -c "curl -v --cacert /tmp/corp-ca.clean.crt --max-time 10 https://pypi.org/simple/ 2>&1 | sed -n '1,80p'"
