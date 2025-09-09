@@ -1,5 +1,7 @@
 kubectl -n airflow exec $SCH -- sh -c "chmod -R a+rX $logdir || true"
 
+$logdir="/opt/airflow/logs"
+
 
 # gets the scheduler pod name
 $SCH = kubectl -n airflow get pod -l app=airflow-scheduler -o jsonpath='{.items[0].metadata.name}'
