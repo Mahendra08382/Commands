@@ -1,26 +1,10 @@
-$ns = "airflow"
-$secret = "airflow-api-secret"
+$ns="airflow"
+$pod = kubectl -n $ns get pod -l app=airflow-web -o jsonpath='{.items[0].metadata.name}'
+$local = "C:/path/to/corp-ca.crt"
+$remote = "/tmp/corp-ca.crt"
 
+# stream the cert into the pod (works around kubectl cp quoting issues)
+Get-Content -Raw -Encoding Byte $local | kubectl exec -i -n $ns $pod -- sh -c "cat > $remote && chmod 644 $remote && ls -l $remote"
 
-kubectl -n $ns set env deploy/airflow-web --from=secret/$secret
-kubectl -n $ns set env deploy/airflow-scheduler --from=secret/$secret
-
-kubectl -n $ns rollout restart deploy/airflow-web
-kubectl -n $ns rollout restart deploy/airflow-scheduler
- 
-kubectl -n $ns get pods -o wide -w
-
- 
-$WS = kubectl -n $ns get pod -l app=airflow-web -o jsonpath='{.items[0].metadata.name}'
-$SCH = kubectl -n $ns get pod -l app=airflow-scheduler -o jsonpath='{.items[0].metadata.name}'
-
-# show the var inside both pods
-kubectl -n $ns exec $WS -- printenv AIRFLOW__API__SECRET_KEY
-kubectl -n $ns exec $SCH -- printenv AIRFLOW__API__SECRET_KEY
-
-# also compare with the secret stored in k8s
-kubectl -n $ns get secret $secret -o jsonpath='{.data.api-secret}' | base64 --decode; echo
-kubectl -n airflow describe deploy airflow-web
-kubectl -n airflow describe deploy airflow-scheduler
-kubectl -n airflow get pods --show-labels
-
+# test curl using that cert
+kubectl -n $ns exec $pod -- sh -c "curl -v --cacert $remote https://pypi.org/simple/pip/ --max-time 10 2>&1 | sed -n '1,60p'"
