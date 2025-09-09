@@ -1,14 +1,17 @@
-kubectl -n airflow logs airflow-scheduler-859b5c99b6-dfxl2 -c scheduler --tail=500 | Select-String -Pattern "GET /health","403","Forbidden"
+$secret = "change-this-to-a-long-random-string-please-ReplaceMe12345"
 
-kubectl -n airflow logs airflow-scheduler-859b5c99b6-dfxl2 -c scheduler --tail=500
+kubectl -n airflow set env deploy/airflow-web AIRFLOW__API__SECRET_KEY=$secret
+kubectl -n airflow set env deploy/airflow-scheduler AIRFLOW__API__SECRET_KEY=$secret
 
+kubectl -n airflow rollout restart deploy/airflow-web
+kubectl -n airflow rollout restart deploy/airflow-scheduler
 
-kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- airflow config get-value webserver authenticate
-kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- airflow config get-value api auth_backend
-kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- airflow config get-value webserver rbac
+# wait until they are running
+kubectl -n airflow get pods --selector=app in (airflow-web,airflow-scheduler) -o wide
 
+# find the web pod name (if needed)
+kubectl -n airflow get pods --selector=app=airflow-web --no-headers -o custom-columns=NAME:.metadata.name
 
-kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- curl -v -H "Authorization: Basic dGVzdDp0ZXN0" http://127.0.0.1:8793/health
-
-kubectl -n airflow logs airflow-web-5dd46f6db4-l57lg -c airflow-web --tail=200
+# then
+kubectl -n airflow exec -it <web-pod-name> -- curl -v http://airflow-scheduler:8793/health
 
