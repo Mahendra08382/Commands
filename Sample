@@ -11,25 +11,34 @@ $ns = "airflow"
 $secretName = "airflow-api-secret"
 $secretKey = "api-secret"
 
-foreach ($dep in $deployments) {
-  $containers = kubectl -n $ns get deploy $dep -o jsonpath='{.spec.template.spec.containers[*].name}'
-  $containers = $containers -split "\s+" | Where-Object { $_ -ne "" }
-  foreach ($c in $containers) {
-    kubectl -n $ns patch deploy $dep --type='strategic' --patch @"
+kubectl -n airflow patch deploy airflow-scheduler --type='strategic' --patch @"
 spec:
   template:
     spec:
       containers:
-      - name: $c
+      - name: scheduler
         env:
         - name: AIRFLOW__API__SECRET_KEY
           valueFrom:
             secretKeyRef:
-              name: $secretName
-              key: $secretKey
+              name: airflow-api-secret
+              key: api-secret
 "@
-  }
-}
+
+kubectl -n airflow patch deploy airflow-webserver --type='strategic' --patch @"
+spec:
+  template:
+    spec:
+      containers:
+      - name: webserver
+        env:
+        - name: AIRFLOW__API__SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: airflow-api-secret
+              key: api-secret
+"@
+
 
 
 kubectl -n $ns rollout restart deploy airflow-scheduler
