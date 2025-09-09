@@ -1,4 +1,15 @@
-$WS = "airflow-web-6cdc6b95b5-2wg54"
+# gets the scheduler pod name
+$SCH = kubectl -n airflow get pod -l app=airflow-scheduler -o jsonpath='{.items[0].metadata.name}'
+Write-Output "Scheduler pod: $SCH"
+
+kubectl -n airflow exec $SCH -- sh -c "ls -l /opt/airflow/logs || ls -l /home/airflow/logs || true"
+
+# make scheduler process user own the logs (preferred) and readable
+kubectl -n airflow exec $SCH -- sh -c "chown -R airflow:root /opt/airflow/logs 2>/dev/null || true; chmod -R u+rwX,g+rX,o+rX /opt/airflow/logs 2>/dev/null || true; ls -ld /opt/airflow/logs && ls -l /opt/airflow/logs | sed -n '1,50p'"
+
+# alternative if logs are at different path:
+kubectl -n airflow exec $SCH -- sh -c "chown -R airflow:root /home/airflow/logs 2>/dev/null || true; chmod -R u+rwX,g+rX,o+rX /home/airflow/logs 2>/dev/null || true; ls -ld /home/airflow/logs"
+
 
 # DNS check
 kubectl -n airflow exec $WS -- nslookup airflow-scheduler
