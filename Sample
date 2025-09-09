@@ -1,1 +1,19 @@
-kubectl -n airflow patch svc airflow-scheduler --type='json' -p '[{"op":"replace","path":"/spec/selector","value":{"app":"airflow-scheduler"}}]'
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-scheduler
+  namespace: airflow
+spec:
+  ports:
+    - port: 8793
+      targetPort: 8793
+  selector:
+    app: airflow-scheduler
+
+
+# apply the updated service
+kubectl apply -f scheduler-service.yaml
+
+# check the service and endpoints
+kubectl -n airflow get svc airflow-scheduler -o wide
+kubectl -n airflow get endpoints airflow-scheduler -o yaml
