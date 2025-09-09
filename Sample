@@ -1,11 +1,11 @@
-$namespace = "airflow"
-$pod = "airflow-web-56cdb58cd6-rf56w"
-$localCert = "C:/Users/tk270/apm0001970-ddm-ddm-datamesh/corp-ca.crt"
+$namespace  = "airflow"
+$pod        = "airflow-web-56cdb58cd6-rf56w"    # replace
+$localCert  = "C:/Users/tk270/apm0001970-ddm-ddm-datamesh/corp-ca.crt"
 $targetPath = "/usr/local/share/ca-certificates/corp-ca.crt"
 
-$dest = $namespace + "/" + $pod + ":" + $targetPath
+# Using Get-Content -Raw to get full file content, then pipe to kubectl exec -i
+Get-Content -Raw -Encoding Byte $localCert | kubectl exec -i -n $namespace $pod -- sh -c "cat > $targetPath && chmod 644 $targetPath && if command -v update-ca-certificates >/dev/null 2>&1; then update-ca-certificates; else apk add --no-cache ca-certificates >/dev/null 2>&1 && update-ca-certificates; fi"
 
-kubectl cp $localCert $dest
 
 
 kubectl -n $namespace exec $pod -- sh -c "chmod 644 $targetPath && if command -v update-ca-certificates >/dev/null 2>&1; then update-ca-certificates; else apk add --no-cache ca-certificates >/dev/null 2>&1 && update-ca-certificates; fi"
