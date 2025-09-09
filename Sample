@@ -1,15 +1,6 @@
-kubectl -n airflow set env deploy/airflow-web `
-  AIRFLOW__LOGGING__REMOTE_LOGGING=false `
-  AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER="" `
-  AIRFLOW__LOGGING__REMOTE_FETCH=false `
-  AIRFLOW__CORE__BASE_LOG_FOLDER=/opt/airflow/logs
+kubectl -n airflow patch deploy airflow-scheduler --type='json' -p '[{"op":"add","path":"/spec/template/spec/securityContext","value":{"fsGroup":65534}}]'
+kubectl -n airflow patch deploy airflow-web --type='json' -p '[{"op":"add","path":"/spec/template/spec/securityContext","value":{"fsGroup":65534}}]'
 
-
+# restart pods
+kubectl -n airflow rollout restart deploy/airflow-scheduler
 kubectl -n airflow rollout restart deploy/airflow-web
-
-
-kubectl -n airflow get pods -l app=airflow-web -o wide --watch
-
-
-$web = kubectl -n airflow get pods --selector=app=airflow-web --no-headers -o custom-columns=NAME:.metadata.name
-kubectl -n airflow exec -it $web -- printenv AIRFLOW__LOGGING__REMOTE_LOGGING AIRFLOW__LOGGING__REMOTE_FETCH AIRFLOW__CORE__BASE_LOG_FOLDER
