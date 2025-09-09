@@ -1,8 +1,5 @@
-kubectl -n airflow get pods --show-labels
-kubectl -n airflow get pods --show-labels | findstr /I scheduler
-\
-
-kubectl -n airflow patch svc airflow-scheduler -p "{\"spec\":{\"selector\":{\"app.kubernetes.io/component\":\"scheduler\"}}}"
+kubectl -n airflow patch svc airflow-scheduler -p '{"spec":{"selector":{"app":"airflow-scheduler"}}}'
 
 
-kubectl -n airflow patch svc airflow-scheduler -p "{\"spec\":{\"selector\":{\"airflow-component\":\"scheduler\"}}}"
+kubectl -n airflow get endpoints airflow-scheduler -o yaml
+kubectl -n airflow get svc airflow-scheduler -o wide
