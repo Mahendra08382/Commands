@@ -1,16 +1,8 @@
-# find controller owning the pod (shows ownerReferences)
-kubectl -n airflow get pod <scheduler-pod-name> -o jsonpath='{.metadata.ownerReferences[0].name}{"\n"}'
+kubectl -n airflow get pods --show-labels
+kubectl -n airflow get pods --show-labels | findstr /I scheduler
+\
+
+kubectl -n airflow patch svc airflow-scheduler -p "{\"spec\":{\"selector\":{\"app.kubernetes.io/component\":\"scheduler\"}}}"
 
 
-kubectl -n airflow label deploy/<scheduler-deployment-name> component=scheduler --overwrite
-# or if it's a statefulset:
-kubectl -n airflow label sts/<scheduler-sts-name> component=scheduler --overwrite
-
-# restart to force pods to re-create with the new label
-kubectl -n airflow rollout restart deploy/<scheduler-deployment-name>
-# or for statefulset
-kubectl -n airflow rollout restart sts/<scheduler-sts-name>
-
-
-kubectl -n airflow get endpoints airflow-scheduler -o yaml
-kubectl -n airflow get svc airflow-scheduler -o wide
+kubectl -n airflow patch svc airflow-scheduler -p "{\"spec\":{\"selector\":{\"airflow-component\":\"scheduler\"}}}"
