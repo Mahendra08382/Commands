@@ -4,8 +4,9 @@ $targetPath = "/usr/local/share/ca-certificates/corp-ca.crt"
 
 
 # get pod names
-$pods = kubectl -n $namespace get pods -o jsonpath='{range .items[*]}{.metadata.name}{"`n"}{end}' | Out-String
-$pods = $pods -split "`n" | Where-Object { $_ -ne "" }
+$pods = kubectl get pods -n $namespace -o jsonpath="{.items[*].metadata.name}" 
+$pods = $pods -split " "
+
 
 foreach ($p in $pods) {
   Write-Output "Copying cert to pod $p"
