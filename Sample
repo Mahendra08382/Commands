@@ -1,16 +1,4 @@
-$namespace = "airflow"
-$localCert = "C:\certs\corp-ca.crt"
-$targetPath = "/usr/local/share/ca-certificates/corp-ca.crt"
-
-
-# get pod names
-$pods = kubectl get pods -n $namespace -o jsonpath="{.items[*].metadata.name}" 
-$pods = $pods -split " "
-
-
-foreach ($p in $pods) {
-  Write-Output "Copying cert to pod $p"
-  kubectl cp $localCert "$namespace/$p:$targetPath"
-  Write-Output "Installing cert inside pod $p"
-  kubectl -n $namespace exec $p -- sh -c "chmod 644 $targetPath && if command -v update-ca-certificates >/dev/null 2>&1; then update-ca-certificates; else apk add --no-cache ca-certificates >/dev/null 2>&1 && update-ca-certificates; fi" 
-}
+$pod = "airflow-webserver-xxxxx"
+kubectl cp "C:\certs\corp-ca.crt" "airflow/$pod`:/usr/local/share/ca-certificates/corp-ca.crt"
+kubectl -n airflow exec $pod -- sh -c "chmod 644 /usr/local/share/ca-certificates/corp-ca.crt && if command -v update-ca-certificates >/dev/null 2>&1; then update-ca-certificates; else apk add --no-cache ca-certificates >/dev/null 2>&1 && update-ca-certificates; fi"
+kubectl -n airflow exec -it $pod -- sh -c "curl -v --max-time 10 https://pypi.org/simple/ 2>&1 | sed -n '1,60p'"
