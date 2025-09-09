@@ -1,5 +1,13 @@
-kubectl -n airflow patch svc airflow-scheduler -p '{"spec":{"selector":{"app":"airflow-scheduler"}}}'
+# create a JSON string in a PowerShell variable
+$patch = '{"spec":{"selector":{"app":"airflow-scheduler"}}}'
+
+# apply the patch using the variable
+kubectl -n airflow patch svc airflow-scheduler -p $patch
 
 
 kubectl -n airflow get endpoints airflow-scheduler -o yaml
 kubectl -n airflow get svc airflow-scheduler -o wide
+
+
+kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- sh -c 'wget -qO- http://127.0.0.1:8793/health || echo "wget/curl missing"'
+
