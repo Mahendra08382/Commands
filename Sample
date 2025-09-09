@@ -1,10 +1,9 @@
-$ns="airflow"
-$pod = kubectl -n $ns get pod -l app=airflow-web -o jsonpath='{.items[0].metadata.name}'
+$ns   = "airflow"
+$pod  = kubectl -n $ns get pod -l app=airflow-web -o jsonpath='{.items[0].metadata.name}'
 $local = "C:/path/to/corp-ca.crt"
-$remote = "/tmp/corp-ca.crt"
 
-# stream the cert into the pod (works around kubectl cp quoting issues)
-Get-Content -Raw -Encoding Byte $local | kubectl exec -i -n $ns $pod -- sh -c "cat > $remote && chmod 644 $remote && ls -l $remote"
+# Encode in base64 and decode inside pod
+[Convert]::ToBase64String([IO.File]::ReadAllBytes($local)) |
+kubectl exec -i -n $ns $pod -- sh -c "base64 -d > /tmp/corp-ca.crt"
 
-# test curl using that cert
-kubectl -n $ns exec $pod -- sh -c "curl -v --cacert $remote https://pypi.org/simple/pip/ --max-time 10 2>&1 | sed -n '1,60p'"
+kubectl -n $ns exec $pod -- sh -c "curl -v --cacert /tmp/corp-ca.crt https://pypi.org/simple/pip/ --max-time 10"
