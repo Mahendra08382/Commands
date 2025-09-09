@@ -1,1 +1,2 @@
-kubectl -n $namespace exec $pod -- sh -c "REQUESTS_CA_BUNDLE=/tmp/corp-ca.clean.crt SSL_CERT_FILE=/tmp/corp-ca.clean.crt pip --disable-pip-version-check --cert /tmp/corp-ca.clean.crt install --no-cache-dir requests 2>&1 | sed -n '1,120p'"
+kubectl -n airflow logs deploy/airflow-webserver --tail=100
+kubectl -n airflow logs deploy/airflow-scheduler --tail=100
