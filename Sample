@@ -1,3 +1,8 @@
+
+
+$secret = openssl rand -hex 32
+Write-Host "Secret: $secret"
+
 $secret = "change-this-to-a-long-random-string-please-ReplaceMe12345"
 
 kubectl -n airflow set env deploy/airflow-web AIRFLOW__API__SECRET_KEY=$secret
