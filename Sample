@@ -1,19 +1,8 @@
-apiVersion: v1
-kind: Service
-metadata:
-  name: airflow-scheduler
-  namespace: airflow
-spec:
-  ports:
-    - port: 8793
-      targetPort: 8793
-  selector:
-    app: airflow-scheduler
+kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- curl -v http://127.0.0.1:8793/health || echo "curl failed"
+
+kubectl -n airflow get pods --selector=app=airflow-web --no-headers -o custom-columns=NAME:.metadata.name
+# or fallback:
+kubectl -n airflow get pods | findstr /I web
 
 
-# apply the updated service
-kubectl apply -f scheduler-service.yaml
-
-# check the service and endpoints
-kubectl -n airflow get svc airflow-scheduler -o wide
-kubectl -n airflow get endpoints airflow-scheduler -o yaml
+kubectl -n airflow exec -it <web-pod> -- curl -v http://airflow-scheduler:8793/health || echo "web->scheduler curl failed"
