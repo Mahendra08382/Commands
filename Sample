@@ -1,4 +1,17 @@
 kubectl port-forward -n airflow svc/airflow-webserver 8080:8080
 
-# test curl locally in the pod
-kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- curl -v http://127.0.0.1:8793/health || echo "local-curl-failed"
+# web pod name
+$web = kubectl -n airflow get pods --selector=app=airflow-web --no-headers -o custom-columns=NAME:.metadata.name
+# scheduler pod name
+$sched = kubectl -n airflow get pods --selector=app=airflow-scheduler --no-headers -o custom-columns=NAME:.metadata.name
+
+# print the env var inside each pod
+kubectl -n airflow exec -it $web -- printenv AIRFLOW__API__SECRET_KEY || echo "no env in web"
+kubectl -n airflow exec -it $sched -- printenv AIRFLOW__API__SECRET_KEY || echo "no env in sched"
+
+
+kubectl -n airflow exec -it $web -- airflow config get-value api secret_key || echo "no config value in web"
+kubectl -n airflow exec -it $sched -- airflow config get-value api secret_key || echo "no config value in sched"
+
+kubectl -n airflow exec -it $web -- curl -v http://airflow-scheduler:8793/health 2>&1 | Out-String
+
