@@ -1,8 +1,15 @@
-kubectl -n airflow logs deploy/airflow-webserver --tail=200
+$namespace = "airflow"
+$localCert = "C:\certs\corp-ca.crt"
+$targetPath = "/usr/local/share/ca-certificates/corp-ca.crt"
 
-# check scheduler pod logs and confirm tasks are running there
-kubectl -n airflow get pods
-kubectl -n airflow logs deploy/airflow-scheduler --tail=200
 
-# from the webserver pod, check whether it can read the scheduler logs path (if mounted)
-kubectl -n airflow exec -it pod/<airflow-webserver-pod> -- ls -la /opt/airflow/logs || true
+# get pod names
+$pods = kubectl -n $namespace get pods -o jsonpath='{range .items[*]}{.metadata.name}{"`n"}{end}' | Out-String
+$pods = $pods -split "`n" | Where-Object { $_ -ne "" }
+
+foreach ($p in $pods) {
+  Write-Output "Copying cert to pod $p"
+  kubectl cp $localCert "$namespace/$p:$targetPath"
+  Write-Output "Installing cert inside pod $p"
+  kubectl -n $namespace exec $p -- sh -c "chmod 644 $targetPath && if command -v update-ca-certificates >/dev/null 2>&1; then update-ca-certificates; else apk add --no-cache ca-certificates >/dev/null 2>&1 && update-ca-certificates; fi" 
+}
