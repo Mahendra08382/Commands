@@ -1,5 +1,5 @@
 # get a webserver pod name (adjust label if your chart used a different label)
-WS=$(kubectl -n airflow get pod -l app.kubernetes.io/component=webserver -o jsonpath='{.items[0].metadata.name}')
+$WS = kubectl -n airflow get pod -l app.kubernetes.io/component=webserver -o jsonpath='{.items[0].metadata.name}'
 echo "webserver pod: $WS"
 
 # DNS resolution test
