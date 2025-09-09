@@ -1,3 +1,46 @@
-# replace <LOG_PATH> with the full path you copied (include leading /log/...). Wrap in single quotes.
-$LOG_PATH = '/log/dag_id=sample_k8s_dag/run_id=manual__2025-09-09T02:33:54.100502+00:00/task_id=hello/attempt=1.log'
-kubectl -n airflow exec $WS -- sh -c "curl -v --max-time 10 'http://airflow-scheduler:8793$LOG_PATH' 2>&1 | sed -n '1,200p'"
+$ns = "airflow"
+
+kubectl -n $ns create secret generic airflow-api-secret `
+  --from-literal=api-secret="c8e6a5a2-5f1d-4dbb-9b0f-8c29e3f7d1a4" `
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl -n $ns get secret airflow-api-secret -o yaml
+
+$deployments = @("airflow-scheduler","airflow-web")
+$ns = "airflow"
+$secretName = "airflow-api-secret"
+$secretKey = "api-secret"
+
+foreach ($dep in $deployments) {
+  $containers = kubectl -n $ns get deploy $dep -o jsonpath='{.spec.template.spec.containers[*].name}'
+  $containers = $containers -split "\s+" | Where-Object { $_ -ne "" }
+  foreach ($c in $containers) {
+    kubectl -n $ns patch deploy $dep --type='strategic' --patch @"
+spec:
+  template:
+    spec:
+      containers:
+      - name: $c
+        env:
+        - name: AIRFLOW__API__SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: $secretName
+              key: $secretKey
+"@
+  }
+}
+
+
+kubectl -n $ns rollout restart deploy airflow-scheduler
+kubectl -n $ns rollout restart deploy airflow-web
+kubectl -n $ns get pods -w
+
+$SCH = kubectl -n $ns get pod -l app=airflow-scheduler -o jsonpath='{.items[0].metadata.name}'
+$WS  = kubectl -n $ns get pod -l app=airflow-web -o jsonpath='{.items[0].metadata.name}'
+
+kubectl -n $ns exec $SCH -- printenv | Select-String "AIRFLOW__API__SECRET_KEY"
+kubectl -n $ns exec $WS  -- printenv | Select-String "AIRFLOW__API__SECRET_KEY"
+
+
+kubectl -n $ns exec $WS -- sh -c "curl -v --max-time 10 http://airflow-scheduler:8793/log/dag_id=<dag_id>/run_id=<run_id>/task_id=<task_id>/attempt=1.log"
