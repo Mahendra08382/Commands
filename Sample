@@ -1,6 +1,10 @@
 
-
-$secret = openssl rand -hex 32
+# generates a 64-hex char secret (~32 bytes)
+$secret = python - <<'PY'
+import secrets,sys
+print(secrets.token_hex(32))
+PY
+# show the value so you can copy it
 Write-Host "Secret: $secret"
 
 $secret = "change-this-to-a-long-random-string-please-ReplaceMe12345"
