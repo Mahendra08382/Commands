@@ -1,18 +1,9 @@
-kubectl apply -f airflow-logs-pvc.yaml
-
-kubectl apply -f airflow-deployment.yaml
-kubectl apply -f airflow-scheduler.yaml
-
-
-kubectl -n airflow rollout restart deploy/airflow-scheduler
-kubectl -n airflow rollout restart deploy/airflow-web
-
-
+# pod names
 $web = kubectl -n airflow get pods --selector=app=airflow-web --no-headers -o custom-columns=NAME:.metadata.name
 $sched = kubectl -n airflow get pods --selector=app=airflow-scheduler --no-headers -o custom-columns=NAME:.metadata.name
 
-kubectl -n airflow get pods -o wide --selector='app in (airflow-scheduler,airflow-web)' --watch
+# list logs on scheduler (where tasks write)
+kubectl -n airflow exec -it $sched -- sh -c "ls -R /opt/airflow/logs | sed -n '1,120p'"
 
-
-kubectl -n airflow exec -it $web -- sh -c "ls -la /opt/airflow || echo '/opt/airflow not found'; ls -la /opt/airflow/logs || echo 'logs dir missing'"
-kubectl -n airflow exec -it $sched -- sh -c "ls -la /opt/airflow/logs || echo 'logs dir missing'"
+# confirm webserver can see same files
+kubectl -n airflow exec -it $web -- sh -c "ls -R /opt/airflow/logs | sed -n '1,120p'"
