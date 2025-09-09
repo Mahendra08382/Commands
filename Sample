@@ -1,8 +1,14 @@
-kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- curl -v http://127.0.0.1:8793/health || echo "curl failed"
+kubectl -n airflow logs airflow-scheduler-859b5c99b6-dfxl2 -c scheduler --tail=500 | Select-String -Pattern "GET /health","403","Forbidden"
 
-kubectl -n airflow get pods --selector=app=airflow-web --no-headers -o custom-columns=NAME:.metadata.name
-# or fallback:
-kubectl -n airflow get pods | findstr /I web
+kubectl -n airflow logs airflow-scheduler-859b5c99b6-dfxl2 -c scheduler --tail=500
 
 
-kubectl -n airflow exec -it <web-pod> -- curl -v http://airflow-scheduler:8793/health || echo "web->scheduler curl failed"
+kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- airflow config get-value webserver authenticate
+kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- airflow config get-value api auth_backend
+kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- airflow config get-value webserver rbac
+
+
+kubectl -n airflow exec -it airflow-scheduler-859b5c99b6-dfxl2 -- curl -v -H "Authorization: Basic dGVzdDp0ZXN0" http://127.0.0.1:8793/health
+
+kubectl -n airflow logs airflow-web-5dd46f6db4-l57lg -c airflow-web --tail=200
+
