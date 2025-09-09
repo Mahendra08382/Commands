@@ -1,4 +1,4 @@
-# adjust $ns and $pod if needed
+kubectl -n $ns exec $pod -- sh -c "echo '--- head ---'; sed -n '1,8p' /tmp/corp-ca.crt || true; echo '--- openssl parse ---'; openssl x509 -in /tmp/corp-ca.crt -noout -text 2>/dev/null && echo 'PARSE_OK' || echo 'PARSE_FAIL'
 $ns="airflow"; $pod="airflow-web-56cdb58cd6-rf56w"
 
 # show first 8 lines (PEM starts with -----BEGIN CERTIFICATE-----)
