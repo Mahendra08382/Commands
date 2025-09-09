@@ -1,3 +1,14 @@
+# adjust $ns and $pod if needed
+$ns="airflow"; $pod="airflow-web-56cdb58cd6-rf56w"
+
+# show first 8 lines (PEM starts with -----BEGIN CERTIFICATE-----)
+kubectl -n $ns exec $pod -- sh -c "sed -n '1,8p' /tmp/corp-ca.crt || true"
+
+# try to see if openssl can parse it (prints details if PEM/DER)
+kubectl -n $ns exec $pod -- sh -c "openssl x509 -in /tmp/corp-ca.crt -noout -text 2>/dev/null && echo 'parsed as PEM' || echo 'failed to parse as PEM'"
+kubectl -n $ns exec $pod -- sh -c "openssl x509 -inform der -in /tmp/corp-ca.crt -noout -text 2>/dev/null && echo 'parsed as DER' || echo 'failed to parse as DER'"
+
+
 $ns="airflow"; $pod="airflow-web-56cdb58cd6-rf56w"  # replace pod if needed
 # curl using the cert
 kubectl -n $ns exec $pod -- sh -c "curl -v --cacert /tmp/corp-ca.crt --max-time 10 https://pypi.org/simple/ 2>&1 | sed -n '1,80p'"
