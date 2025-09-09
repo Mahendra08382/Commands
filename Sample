@@ -1,9 +1,7 @@
-# get a webserver pod name (adjust label if your chart used a different label)
-$WS = kubectl -n airflow get pod -l app.kubernetes.io/component=webserver -o jsonpath='{.items[0].metadata.name}'
-echo "webserver pod: $WS"
+$WS = "airflow-web-6cdc6b95b5-2wg54"
 
-# DNS resolution test
-kubectl -n airflow exec $WS -- sh -c "nslookup airflow-scheduler || dig +short airflow-scheduler || host airflow-scheduler || true"
+# DNS check
+kubectl -n airflow exec $WS -- nslookup airflow-scheduler
 
-# HTTP test to scheduler log server
-kubectl -n airflow exec $WS -- sh -c "curl -v --max-time 5 http://airflow-scheduler:8793/ || true"
+# HTTP check
+kubectl -n airflow exec $WS -- curl -v --max-time 5 http://airflow-scheduler:8793/
