@@ -1,26 +1,14 @@
+kubectl -n airflow set env deploy/airflow-web AIRFLOW__API__SECRET_KEY=7e2f3b9c0d1a48efb6c25d4e91a7f3c4d8e1b2a9f7c0436d91b8a62e3d5c9f72
+kubectl -n airflow set env deploy/airflow-scheduler AIRFLOW__API__SECRET_KEY=7e2f3b9c0d1a48efb6c25d4e91a7f3c4d8e1b2a9f7c0436d91b8a62e3d5c9f72
 
-# generates a 64-hex char secret (~32 bytes)
-$secret = python - <<'PY'
-import secrets,sys
-print(secrets.token_hex(32))
-PY
-# show the value so you can copy it
-Write-Host "Secret: $secret"
-
-$secret = "change-this-to-a-long-random-string-please-ReplaceMe12345"
-
-kubectl -n airflow set env deploy/airflow-web AIRFLOW__API__SECRET_KEY=$secret
-kubectl -n airflow set env deploy/airflow-scheduler AIRFLOW__API__SECRET_KEY=$secret
-
+# restart to apply
 kubectl -n airflow rollout restart deploy/airflow-web
 kubectl -n airflow rollout restart deploy/airflow-scheduler
 
-# wait until they are running
-kubectl -n airflow get pods --selector=app in (airflow-web,airflow-scheduler) -o wide
+kubectl -n airflow get deploy airflow-web -o yaml | Select-String 'AIRFLOW__API__SECRET_KEY' -Context 0,1
+kubectl -n airflow get deploy airflow-scheduler -o yaml | Select-String 'AIRFLOW__API__SECRET_KEY' -Context 0,1
 
-# find the web pod name (if needed)
-kubectl -n airflow get pods --selector=app=airflow-web --no-headers -o custom-columns=NAME:.metadata.name
 
-# then
-kubectl -n airflow exec -it <web-pod-name> -- curl -v http://airflow-scheduler:8793/health
-
+# from webserver pod
+$web = (kubectl -n airflow get pods --selector=app=airflow-web --no-headers -o custom-columns=NAME:.metadata.name)
+kubectl -n airflow exec -it $web -- curl -v http://airflow-scheduler:8793/health
