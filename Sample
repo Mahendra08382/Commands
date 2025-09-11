@@ -1,1 +1,3 @@
 kubectl exec -n airflow airflow-web-698b474997-2k4kh -- ls -lh /tmp/logs.tar
+
+kubectl exec -n airflow airflow-web-698b474997-2k4kh -- tar -tf /tmp/logs.tar | head -n 30
