@@ -1,1 +1,15 @@
-kubectl exec airflow-scheduler-7cf844b744-564tw -n airflow -- bash -c "grep 'hello from kubernetes' '/opt/airflow/logs/dag_id=sample_k8s_dag/run_id=manual__2025-09-11T16:09:31.605986+00:00/task_id=hello/attempt=1.log'"
+kubectl get networkpolicy -n airflow -o wide
+
+
+kubectl describe svc airflow-scheduler -n airflow
+kubectl get endpoints airflow-scheduler -n airflow -o wide
+
+
+$pod = kubectl get pods -n airflow --no-headers | Select-String "scheduler" | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1
+kubectl exec -n airflow $pod -- bash -c "ss -tulpn | grep 8793 || netstat -tulpn | grep 8793 || echo 'no-listen'"
+
+
+# find a webserver pod
+$web = kubectl get pods -n airflow --no-headers | Select-String "web" | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1
+kubectl exec -n airflow $web -- bash -c "apt-get update >/dev/null 2>&1 || true; (command -v curl >/dev/null && true) || (apt-get update && apt-get install -y curl) >/dev/null 2>&1 || true"
+kubectl exec -n airflow $web -- bash -c "curl -sS -v http://airflow-scheduler:8793/ || echo 'curl-failed:$?'"
