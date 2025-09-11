@@ -1,5 +1,1 @@
-$sched = "airflow-scheduler-7cf844b744-564tw"
-$web   = "airflow-web-698b474997-2k4kh"
-
-# Stream the ENTIRE logs directory (not just scheduler logs) from scheduler -> web pod
-kubectl exec -n airflow $sched -- bash -c "cd /opt/airflow && tar -cf - logs" | kubectl exec -i -n airflow $web -- bash -c "tar -xf - -C /opt/airflow"
+kubectl exec -n airflow $web -- ls -la /opt/airflow/logs | grep sample_k8s_dag
