@@ -1,4 +1,6 @@
-$sched = "airflow-scheduler-7cf844b744-564tw"
-$local = "C:\Users\tk270\logs.tar"
+$web = "airflow-web-698b474997-2k4kh"
+Get-Content -Path $local -Encoding Byte -ReadCount 0 | kubectl exec -i -n airflow $web -- bash -c "cat > /tmp/logs.tar"
 
+
+$local = "C:\Users\tk270\logs.tar"
 kubectl exec -n airflow $sched -- bash -c "cat /tmp/logs.tar" | Set-Content -Path $local -Encoding Byte
