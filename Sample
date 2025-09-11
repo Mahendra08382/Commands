@@ -1,13 +1,2 @@
-kubectl cp "C:\Windows\Temp\airflow-logs.tgz" "$web:/tmp/airflow-logs.tgz" -n airflow
-
-kubectl exec -n airflow $web -- bash -c "mkdir -p /opt/airflow/logs && tar xzf /tmp/airflow-logs.tgz -C /opt/airflow && rm -f /tmp/airflow-logs.tgz"
-
-
-
-kubectl cp "C:\Windows\Temp\airflow-logs.tgz" "airflow/airflow-web-698b474997-2k4kh:/tmp/airflow-logs.tgz"
-
-# Copy file from local Windows path into pod (with namespace flag)
-kubectl cp "C:\\Windows\\Temp\\airflow-logs.tgz" airflow-web-698b474997-2k4kh:/tmp/airflow-logs.tgz -n airflow
-
-
-
+# Stream the local tar into the web pod (safe binary transfer)
+Get-Content -Path $localTar -Encoding Byte -ReadCount 0 | kubectl exec -i -n airflow $web -- bash -c "cat > /tmp/airflow-logs.tgz"
