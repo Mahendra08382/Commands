@@ -1,3 +1,4 @@
-kubectl exec -n airflow $web -- bash -c "stat -c%s /tmp/airflow-logs.tgz || ls -l /tmp/airflow-logs.tgz"
-
 kubectl exec -n airflow airflow-web-698b474997-2k4kh -- bash -c "mkdir -p /opt/airflow/logs && tar -xf /tmp/airflow-logs.tgz -C /opt/airflow && rm -f /tmp/airflow-logs.tgz"
+
+
+kubectl exec -n airflow airflow-web-698b474997-2k4kh -- ls -la /opt/airflow/logs | head -n 30
