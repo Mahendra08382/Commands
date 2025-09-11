@@ -2,9 +2,16 @@ $web  = kubectl get pods -n airflow --no-headers | Select-String "web"       | F
 $sched = kubectl get pods -n airflow --no-headers | Select-String "scheduler" | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1
 
 while ($true) {
-  Write-Host "$(Get-Date) syncing logs from $sched to $web ..."
-  kubectl exec -n airflow $sched -- bash -c "cd /opt/airflow && tar czf - logs" > C:\Windows\temp\airflow-logs.tgz
-  kubectl cp C:\Windows\temp\airflow-logs.tgz airflow/$web:/tmp/airflow-logs.tgz -n airflow
-  kubectl exec -n airflow $web -- bash -c "tar xzf /tmp/airflow-logs.tgz -C /opt/airflow || true; rm -f /tmp/airflow-logs.tgz"
-  Start-Sleep -Seconds 60
+    Write-Host "$(Get-Date) syncing logs from $sched to $web ..."
+
+ 
+    kubectl exec -n airflow $sched -- bash -c "cd /opt/airflow && tar czf - logs" > C:\Windows\temp\airflow-logs.tgz
+
+ 
+    kubectl cp "C:\Windows\temp\airflow-logs.tgz" "airflow/${web}:/tmp/airflow-logs.tgz" -n airflow
+
+ 
+    kubectl exec -n airflow $web -- bash -c "mkdir -p /opt/airflow && tar xzf /tmp/airflow-logs.tgz -C /opt/airflow && rm -f /tmp/airflow-logs.tgz"
+
+    Start-Sleep -Seconds 60
 }
