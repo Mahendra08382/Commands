@@ -1,1 +1,10 @@
-kubectl cp airflow/airflow-scheduler-xxx:/opt/airflow/logs airflow/airflow-web-yyy:/opt/airflow/logs
+# create dir on web pod
+kubectl exec -n airflow <web-pod> -- mkdir -p /opt/airflow/logs
+
+# make it writable (try chown to 'airflow' user; if unknown, chmod 755)
+kubectl exec -n airflow <web-pod> -- chown -R 50000:50000 /opt/airflow/logs || \
+kubectl exec -n airflow <web-pod> -- chmod -R 755 /opt/airflow/logs
+
+
+kubectl exec -n airflow <scheduler-pod> -- sh -c "tar -C /opt/airflow/logs -cf - . " \
+  | kubectl exec -n airflow <web-pod> -- sh -c "tar -C /opt/airflow/logs -xvf -"
