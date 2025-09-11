@@ -1,1 +1,8 @@
-kubectl exec -n airflow $web -- bash -c "curl -v http://airflow-scheduler:8793/ || echo 'curl-failed:$?'"
+$scheduler = kubectl get pods -n airflow --no-headers | Select-String "scheduler" | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1
+kubectl logs $scheduler -n airflow --tail=500 | Select-String "Forbidden|403|permission|auth|Auth" -CaseSensitive:$false
+
+$web = kubectl get pods -n airflow --no-headers | Select-String "web" | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1
+kubectl logs $web -n airflow --tail=500 | Select-String "Could not read served logs|HTTPConnectionPool|403|Forbidden" -CaseSensitive:$false
+
+
+kubectl logs $scheduler -n airflow --tail=200
