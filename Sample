@@ -1,4 +1,7 @@
-kubectl exec -n airflow airflow-web-698b474997-2k4kh -- bash -c "mkdir -p /opt/airflow/logs && tar -xf /tmp/airflow-logs.tgz -C /opt/airflow && rm -f /tmp/airflow-logs.tgz"
+# scheduler pod
+$sched = "airflow-scheduler-7cf844b744-564tw"
+# web pod
+$web   = "airflow-web-698b474997-2k4kh"
 
-
-kubectl exec -n airflow airflow-web-698b474997-2k4kh -- ls -la /opt/airflow/logs | head -n 30
+# Directly stream tar from scheduler -> into web pod and extract
+kubectl exec -n airflow $sched -- bash -c "cd /opt/airflow && tar cf - logs" | kubectl exec -i -n airflow $web -- bash -c "mkdir -p /opt/airflow && tar xf - -C /opt/airflow"
