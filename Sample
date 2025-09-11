@@ -1,5 +1,6 @@
-$local = "C:\Windows\Temp\airflow-logs.tgz"
-Get-Item $local | Select-Object Name,Length
-Get-FileHash $local -Algorithm SHA256
-# optional: show gzip magic bytes (first 2 bytes should be 1F 8B)
-Format-Hex -Path $local -Count 4
+$web = "airflow-web-698b474997-2k4kh"
+
+kubectl exec -n airflow $web -- bash -c "mkdir -p /opt/airflow/logs && tar -xzf /tmp/airflow-logs.tgz -C /opt/airflow && rm -f /tmp/airflow-logs.tgz"
+
+
+kubectl exec -n airflow $web -- bash -c "ls -la /opt/airflow/logs | head -n 20"
