@@ -1,2 +1,5 @@
 kubectl exec -n airflow airflow-scheduler-XXXXX -- sh -c "tar -C /opt/airflow/logs -cf - ." \
   | kubectl exec -i -n airflow airflow-web-698b474997-2k4kh -- sh -c "tar -C /opt/airflow/logs -xvf -"
+
+
+kubectl exec -n airflow <web-pod> -c <web-container> -- chmod -R 755 /opt/airflow/logs
