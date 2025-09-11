@@ -1,1 +1,1 @@
-kubectl exec -n airflow $web -- ls -la /opt/airflow/logs | grep sample_k8s_dag
+kubectl cp airflow/airflow-scheduler-xxx:/opt/airflow/logs airflow/airflow-web-yyy:/opt/airflow/logs
