@@ -1,9 +1,3 @@
-$ns   = "airflow"
-$pod  = kubectl -n $ns get pod -l app=airflow-web -o jsonpath='{.items[0].metadata.name}'
-$local = "C:/path/to/corp-ca.crt"
+kubectl get pods -n airflow --show-labels | Select-String "<your_dag_id>"
 
-# Encode in base64 and decode inside pod
-[Convert]::ToBase64String([IO.File]::ReadAllBytes($local)) |
-kubectl exec -i -n $ns $pod -- sh -c "base64 -d > /tmp/corp-ca.crt"
-
-kubectl -n $ns exec $pod -- sh -c "curl -v --cacert /tmp/corp-ca.crt https://pypi.org/simple/pip/ --max-time 10"
+kubectl logs <task-pod-name> -n airflow
