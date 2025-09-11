@@ -1,6 +1,52 @@
-$web = "airflow-web-698b474997-2k4kh"
+# -------------------------
+# PowerShell: detect & extract /tmp/airflow-logs.tgz inside pod
+# -------------------------
+$web = "airflow-web-698b474997-2k4kh"   # <-- replace with your web pod name if different
+$ns  = "airflow"
 
-kubectl exec -n airflow $web -- bash -c "mkdir -p /opt/airflow/logs && tar -xzf /tmp/airflow-logs.tgz -C /opt/airflow && rm -f /tmp/airflow-logs.tgz"
+Write-Host "Checking /tmp/airflow-logs.tgz on pod $web ..."
 
+# Try several commands on the pod to get the first 2 bytes as hex
+$cmds = @(
+  "xxd -p -l 2 /tmp/airflow-logs.tgz 2>/dev/null || true",
+  "python - <<'PY' -c \"import sys;f=open('/tmp/airflow-logs.tgz','rb');print(f.read(2).hex())\" 2>/dev/null || true",
+  "hexdump -n 2 -v -e '1/1 \"%02x\"' /tmp/airflow-logs.tgz 2>/dev/null || true",
+  "od -An -t x1 -N 2 /tmp/airflow-logs.tgz 2>/dev/null | tr -d ' \n' || true",
+  "head -c 2 /tmp/airflow-logs.tgz | xxd -p -c 2 2>/dev/null || true"
+)
 
-kubectl exec -n airflow $web -- bash -c "ls -la /opt/airflow/logs | head -n 20"
+$magic = $null
+foreach ($c in $cmds) {
+  $out = kubectl exec -n $ns $web -- bash -c $c 2>$null
+  if ($out) {
+    $s = $out.Trim()
+    if ($s -ne "") { $magic = $s; break }
+  }
+}
+
+if (-not $magic) {
+  Write-Warning "Could not read file header inside pod. Will attempt extraction with plain tar (-xf) as fallback."
+  $isGzip = $false
+} else {
+  $magic = $magic.ToLower()
+  Write-Host "Header bytes (hex): $magic"
+  # gzip magic is 1f8b
+  if ($magic.StartsWith("1f8b")) { $isGzip = $true } else { $isGzip = $false }
+}
+
+# Choose tar flags
+if ($isGzip) {
+  Write-Host "Detected gzip format -> using tar -xzf"
+  $tarCmd = "mkdir -p /opt/airflow && tar -xzf /tmp/airflow-logs.tgz -C /opt/airflow && rm -f /tmp/airflow-logs.tgz"
+} else {
+  Write-Host "Not gzip -> using tar -xf (plain tar) as extraction"
+  $tarCmd = "mkdir -p /opt/airflow && tar -xf /tmp/airflow-logs.tgz -C /opt/airflow && rm -f /tmp/airflow-logs.tgz"
+}
+
+# Run extraction
+Write-Host "Running extraction in pod..."
+kubectl exec -n $ns $web -- bash -c $tarCmd
+
+# Verify result
+Write-Host "Listing /opt/airflow/logs (first 50 entries):"
+kubectl exec -n $ns $web -- bash -c "ls -la /opt/airflow/logs | head -n 50"
