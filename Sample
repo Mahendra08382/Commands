@@ -4,5 +4,6 @@ kubectl exec -n airflow $web -- bash -c "mkdir -p /opt/airflow/logs && tar xzf /
 
 
 
-kubectl cp $localTar "airflow/airflow-web-698b474997-2k4kh:/tmp/airflow-logs.tgz"
+kubectl cp "C:\Windows\Temp\airflow-logs.tgz" "airflow/airflow-web-698b474997-2k4kh:/tmp/airflow-logs.tgz"
+
 
