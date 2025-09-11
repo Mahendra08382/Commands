@@ -1,5 +1,6 @@
-kubectl get ingress -n airflow -o yaml
-
-
+# find names
 $web = kubectl get pods -n airflow --no-headers | Select-String "web" | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1
-kubectl exec -n airflow $web -- bash -c "curl -v -H 'Authorization: Bearer test' http://airflow-scheduler:8793/ || echo 'curl-failed'"
+$sched = kubectl get pods -n airflow --no-headers | Select-String "scheduler" | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1
+
+kubectl exec -n airflow $web -- bash -c "printenv | grep -i AIRFLOW__WEBSERVER__SECRET_KEY || true"
+kubectl exec -n airflow $sched -- bash -c "printenv | grep -i AIRFLOW__WEBSERVER__SECRET_KEY || true"
