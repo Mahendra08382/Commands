@@ -36,3 +36,10 @@ Write-Host "Done. Logs copied to /opt/airflow/logs on web pod $web"
 
 # Optional: remove local tar
 Remove-Item $localTar -ErrorAction SilentlyContinue
+
+
+
+
+$localTar = "C:\Windows\Temp\airflow-logs.tgz"
+kubectl exec -n airflow $sched -- bash -c "cd /opt/airflow && tar czf - logs" > $localTar
+
