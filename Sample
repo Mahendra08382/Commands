@@ -1,6 +1,25 @@
-$web = "airflow-web-698b474997-2k4kh"
-Get-Content -Path $local -Encoding Byte -ReadCount 0 | kubectl exec -i -n airflow $web -- bash -c "cat > /tmp/logs.tar"
+$sched = "airflow-scheduler-7cf844b744-564tw"
+$local = "C:\Users\tk270\logs.tar"
+
+# Stream binary from pod into local file
+$bytes = kubectl exec -n airflow $sched -- bash -c "cat /tmp/logs.tar" | ForEach-Object { [System.Convert]::FromBase64String($_) }
+
+
+# Inside scheduler pod: base64 encode tar
+kubectl exec -n airflow $sched -- bash -c "base64 /tmp/logs.tar" | Out-File -Encoding ASCII C:\Users\tk270\logs.b64
+
+# Decode back to binary locally
+certutil -decode C:\Users\tk270\logs.b64 C:\Users\tk270\logs.tar
 
 
 $local = "C:\Users\tk270\logs.tar"
-kubectl exec -n airflow $sched -- bash -c "cat /tmp/logs.tar" | Set-Content -Path $local -Encoding Byte
+$web   = "airflow-web-698b474997-2k4kh"
+
+# Encode tar locally
+certutil -encode $local C:\Users\tk270\logs.b64
+
+# Stream base64 into web pod and decode
+Get-Content C:\Users\tk270\logs.b64 -Raw | kubectl exec -i -n airflow $web -- bash -c "base64 -d > /tmp/logs.tar"
+
+
+kubectl exec -n airflow $web -- bash -c "mkdir -p /opt/airflow && tar -xf /tmp/logs.tar -C /opt/airflow && rm -f /tmp/logs.tar"
