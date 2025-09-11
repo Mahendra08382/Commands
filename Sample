@@ -1,4 +1,1 @@
-# stream logs from scheduler -> directly into web pod, ignoring file-change errors
-kubectl exec -n airflow $sched -- bash -c "cd /opt/airflow && tar cf - logs --warning=no-file-changed --ignore-failed-read" | kubectl exec -i -n airflow $web -- bash -c "mkdir -p /opt/airflow && tar xf - -C /opt/airflow"
-
-kubectl exec -n airflow $web -- ls -la /opt/airflow/logs | head -n 30
+kubectl exec -n airflow $sched -- bash -c "cd /opt/airflow && tar cf - logs --warning=no-file-changed --ignore-failed-read || true" | kubectl exec -i -n airflow $web -- bash -c "mkdir -p /opt/airflow && tar xf - -C /opt/airflow"
