@@ -1,3 +1,1 @@
-kubectl get pods -n airflow --show-labels | Select-String "<your_dag_id>"
-
-kubectl logs <task-pod-name> -n airflow
+kubectl exec $pod -n airflow -- ls -la /opt/airflow/logs/<your_dag_id>/<your_task_id>/
