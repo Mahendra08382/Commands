@@ -1,8 +1,5 @@
-# Stream the local tar into the web pod (safe binary transfer)
-Get-Content -Path $localTar -Encoding Byte -ReadCount 0 | kubectl exec -i -n airflow $web -- bash -c "cat > /tmp/airflow-logs.tgz"
-
-
-kubectl exec -n airflow $web -- bash -c "mkdir -p /opt/airflow && tar xzf /tmp/airflow-logs.tgz -C /opt/airflow && rm -f /tmp/airflow-logs.tgz"
-
-kubectl exec -n airflow $web -- bash -c "ls -la /opt/airflow/logs | head -n 40"
-
+$local = "C:\Windows\Temp\airflow-logs.tgz"
+Get-Item $local | Select-Object Name,Length
+Get-FileHash $local -Algorithm SHA256
+# optional: show gzip magic bytes (first 2 bytes should be 1F 8B)
+Format-Hex -Path $local -Count 4
