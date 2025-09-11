@@ -1,1 +1,1 @@
-kubectl exec airflow-scheduler-7cf844b744-564tw -n airflow -- bash -c "tail -n 200 '/opt/airflow/logs/dag_id=sample_k8s_dag/run_id=manual__2025-09-11T16:09:31.605986+00:00/task_id=hello/attempt=1.log'"
+kubectl exec airflow-scheduler-7cf844b744-564tw -n airflow -- bash -c "grep 'hello from kubernetes' '/opt/airflow/logs/dag_id=sample_k8s_dag/run_id=manual__2025-09-11T16:09:31.605986+00:00/task_id=hello/attempt=1.log'"
