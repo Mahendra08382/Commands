@@ -1,1 +1,21 @@
-kubectl exec -n airflow $sched -- bash -c "cd /opt/airflow && tar cf - logs --warning=no-file-changed --ignore-failed-read || true" | kubectl exec -i -n airflow $web -- bash -c "mkdir -p /opt/airflow && tar xf - -C /opt/airflow"
+# scheduler pod name
+$sched = "airflow-scheduler-7cf844b744-564tw"
+
+# create a tarball inside the scheduler
+kubectl exec -n airflow $sched -- bash -c "cd /opt/airflow && tar -cf /tmp/logs.tar logs"
+
+# copy tarball from scheduler to your local machine
+kubectl cp -n airflow $sched:/tmp/logs.tar C:\Windows\Temp\logs.tar
+
+
+# web pod name
+$web = "airflow-web-698b474997-2k4kh"
+
+# copy local tar into the web pod
+kubectl cp C:\Windows\Temp\logs.tar -n airflow $web:/tmp/logs.tar
+
+# extract inside the web pod
+kubectl exec -n airflow $web -- bash -c "mkdir -p /opt/airflow && tar -xf /tmp/logs.tar -C /opt/airflow && rm -f /tmp/logs.tar"
+
+# verify
+kubectl exec -n airflow $web -- ls -la /opt/airflow/logs | head -n 30
