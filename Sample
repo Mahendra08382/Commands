@@ -1,5 +1,44 @@
-kubectl exec -n airflow airflow-scheduler-XXXXX -- sh -c "tar -C /opt/airflow/logs -cf - ." \
-  | kubectl exec -i -n airflow airflow-web-698b474997-2k4kh -- sh -c "tar -C /opt/airflow/logs -xvf -"
+-- Use a role with user creation privileges, like ACCOUNTADMIN or SECURITYADMIN
+USE ROLE SECURITYADMIN;
+
+CREATE ROLE API_APP_TEAM_ROLE;
+
+-- Grant usage on the warehouse the API will use
+-- The application needs a warehouse to run its queries
+GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE API_APP_TEAM_ROLE;
+
+-- Grant access to the specific database and schema
+GRANT USAGE ON DATABASE MY_DATABASE TO ROLE API_APP_TEAM_ROLE;
+GRANT USAGE ON SCHEMA MY_DATABASE.PUBLIC TO ROLE API_APP_TEAM_ROLE;
+
+-- Grant SELECT permission ONLY on the specific table to be exposed
+GRANT SELECT ON TABLE MY_DATABASE.PUBLIC.CUSTOMER_DATA TO ROLE API_APP_TEAM_ROLE;
 
 
-kubectl exec -n airflow <web-pod> -c <web-container> -- chmod -R 755 /opt/airflow/logs
+
+-- Still using SECURITYADMIN role
+CREATE USER API_USER
+  PASSWORD = null -- We will use Key-Pair authentication, not passwords
+  LOGIN_NAME = 'api_user'
+  DISPLAY_NAME = 'API Application User'
+  DEFAULT_WAREHOUSE = 'COMPUTE_WH'
+  DEFAULT_ROLE = 'API_APP_TEAM_ROLE'
+  MUST_CHANGE_PASSWORD = FALSE;
+
+-- Assign the role to the user
+GRANT ROLE API_APP_TEAM_ROLE TO USER API_USER;
+
+
+
+# 1. Generate an encrypted private key (recommended)
+openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8
+
+# You will be asked to set a passphrase. Securely share this with the app team.
+
+# 2. Generate the public key from the private key
+openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
+
+
+-- Use SECURITYADMIN or ACCOUNTADMIN
+ALTER USER API_USER SET RSA_PUBLIC_KEY='MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy...';
+
