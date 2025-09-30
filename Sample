@@ -1,51 +1,52 @@
+# =========================
+#  Add this at the bottom
+# =========================
 
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+from flask import Flask, jsonify, abort
 
-choco install openssl -y
+app = Flask(__name__)
 
-openssl version
+# Hardcoded DB + schema for your case
+database = "DDM_TEST"
+schema = "EMPLOYEE"
 
--- Use a role with user creation privileges, like ACCOUNTADMIN or SECURITYADMIN
-USE ROLE SECURITYADMIN;
+def fetch_top10(table_name: str):
+    # small safety guard
+    if not table_name or not table_name.replace('_', '').isalnum():
+        raise ValueError("Invalid table name.")
 
-CREATE ROLE API_APP_TEAM_ROLE;
+    sql = f'SELECT * FROM "{database}"."{schema}"."{table_name.upper()}" LIMIT 10'
 
--- Grant usage on the warehouse the API will use
--- The application needs a warehouse to run its queries
-GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE API_APP_TEAM_ROLE;
+    # use your existing helpers
+    passphrase, pem = get_pass_cert_from_client(account_name, devops_id_full)
+    con = connect_2_snowflake_db(pem, passphrase, devops_id_full, account_name, devops_id_role)
 
--- Grant access to the specific database and schema
-GRANT USAGE ON DATABASE MY_DATABASE TO ROLE API_APP_TEAM_ROLE;
-GRANT USAGE ON SCHEMA MY_DATABASE.PUBLIC TO ROLE API_APP_TEAM_ROLE;
+    try:
+        cur = con.cursor()
+        cur.execute(sql)
+        cols = [c[0] for c in cur.description]  # column names
+        rows = cur.fetchall()
+        return [dict(zip(cols, r)) for r in rows]
+    finally:
+        try:
+            cur.close()
+            con.close()
+        except Exception:
+            pass
 
--- Grant SELECT permission ONLY on the specific table to be exposed
-GRANT SELECT ON TABLE MY_DATABASE.PUBLIC.CUSTOMER_DATA TO ROLE API_APP_TEAM_ROLE;
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
+@app.get("/table/<string:table_name>")
+def table_top10(table_name: str):
+    try:
+        data = fetch_top10(table_name)
+        return jsonify(data)
+    except ValueError as ve:
+        abort(400, str(ve))
+    except Exception as e:
+        abort(500, str(e))
 
-
--- Still using SECURITYADMIN role
-CREATE USER API_USER
-  PASSWORD = null -- We will use Key-Pair authentication, not passwords
-  LOGIN_NAME = 'api_user'
-  DISPLAY_NAME = 'API Application User'
-  DEFAULT_WAREHOUSE = 'COMPUTE_WH'
-  DEFAULT_ROLE = 'API_APP_TEAM_ROLE'
-  MUST_CHANGE_PASSWORD = FALSE;
-
--- Assign the role to the user
-GRANT ROLE API_APP_TEAM_ROLE TO USER API_USER;
-
-
-
-# 1. Generate an encrypted private key (recommended)
-openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8
-
-# You will be asked to set a passphrase. Securely share this with the app team.
-
-# 2. Generate the public key from the private key
-openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
-
-
--- Use SECURITYADMIN or ACCOUNTADMIN
-ALTER USER API_USER SET RSA_PUBLIC_KEY='MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy...';
-
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000, debug=True)
