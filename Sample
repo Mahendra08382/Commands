@@ -5,23 +5,28 @@ from flask import Flask, jsonify, abort
 
 app = Flask(__name__)
 
-# Hardcode per your table location
+# Hardcode per your DB + schema
 database = "DDM_TEST"
 schema = "EMPLOYEE"
+warehouse = "COMPUTE_WH"   # 👈 replace with your actual warehouse name
 
 def fetch_top10(table_name: str):
     if not table_name or not table_name.replace('_', '').isalnum():
         raise ValueError("Invalid table name.")
-    sql = f'SELECT * FROM "{database}"."{schema}"."{table_name.upper()}" LIMIT 10'
-    print(f"[sfapi] Executing SQL: {sql}")  # will print in your terminal
 
-    # reuse your existing helpers already defined above
+    sql = f'SELECT * FROM "{database}"."{schema}"."{table_name.upper()}" LIMIT 10'
+    print(f"[sfapi] Executing SQL: {sql}")
+
+    # reuse your helpers
     passphrase, pem = get_pass_cert_from_client(account_name, devops_id_full)
     con = connect_2_snowflake_db(pem, passphrase, devops_id_full, account_name, devops_id_role)
 
     try:
         with con.cursor() as cur:
+            # ✅ ensure warehouse is set
+            cur.execute(f'USE WAREHOUSE "{warehouse}"')
             cur.execute(sql)
+
             cols = [c[0] for c in cur.description]
             rows = cur.fetchall()
         return [dict(zip(cols, r)) for r in rows]
@@ -35,10 +40,6 @@ def fetch_top10(table_name: str):
 def sf_health():
     return {"status": "ok"}
 
-@app.get("/sfapi/routes")
-def sf_routes():
-    return jsonify(sorted([str(r) for r in app.url_map.iter_rules()]))
-
 @app.get("/sfapi/table/<string:table_name>")
 def sf_table_top10(table_name: str):
     try:
@@ -50,5 +51,5 @@ def sf_table_top10(table_name: str):
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    # use a different port to avoid whatever is on 8000
+    print("[sfapi] Starting on http://127.0.0.1:5051")
     app.run(host="127.0.0.1", port=5051, debug=True)
