@@ -1,35 +1,31 @@
-# =========================
-#  Add this at the bottom
-# =========================
-
+# === add at the bottom of your file ===
 from flask import Flask, jsonify, abort
 
 app = Flask(__name__)
 
-# Hardcoded DB + schema for your case
+# hard-code your DB + schema per your last message
 database = "DDM_TEST"
 schema = "EMPLOYEE"
 
 def fetch_top10(table_name: str):
-    # small safety guard
     if not table_name or not table_name.replace('_', '').isalnum():
         raise ValueError("Invalid table name.")
 
     sql = f'SELECT * FROM "{database}"."{schema}"."{table_name.upper()}" LIMIT 10'
+    print(f"[Flask] Executing: {sql}")  # debug so you see it run
 
-    # use your existing helpers
+    # reuse your existing helpers
     passphrase, pem = get_pass_cert_from_client(account_name, devops_id_full)
     con = connect_2_snowflake_db(pem, passphrase, devops_id_full, account_name, devops_id_role)
 
     try:
-        cur = con.cursor()
-        cur.execute(sql)
-        cols = [c[0] for c in cur.description]  # column names
-        rows = cur.fetchall()
+        with con.cursor() as cur:
+            cur.execute(sql)
+            cols = [c[0] for c in cur.description]
+            rows = cur.fetchall()
         return [dict(zip(cols, r)) for r in rows]
     finally:
         try:
-            cur.close()
             con.close()
         except Exception:
             pass
@@ -38,15 +34,21 @@ def fetch_top10(table_name: str):
 def health():
     return {"status": "ok"}
 
-@app.get("/table/<string:table_name>")
-def table_top10(table_name: str):
+# NEW path to avoid clashing with the old one
+@app.get("/api/table/<string:table_name>")
+def api_table_top10(table_name: str):
     try:
         data = fetch_top10(table_name)
         return jsonify(data)
     except ValueError as ve:
         abort(400, str(ve))
     except Exception as e:
-        abort(500, str(e))
+        return jsonify({"error": str(e)}), 500
+
+# optional: view registered routes to confirm which one is active
+@app.get("/routes")
+def routes():
+    return jsonify(sorted([str(r) for r in app.url_map.iter_rules()]))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
