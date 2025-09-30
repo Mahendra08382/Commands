@@ -1,20 +1,21 @@
-# === add at the bottom of your file ===
+# =========================
+#  Snowflake Flask endpoints
+# =========================
 from flask import Flask, jsonify, abort
 
 app = Flask(__name__)
 
-# hard-code your DB + schema per your last message
+# Hardcode per your table location
 database = "DDM_TEST"
 schema = "EMPLOYEE"
 
 def fetch_top10(table_name: str):
     if not table_name or not table_name.replace('_', '').isalnum():
         raise ValueError("Invalid table name.")
-
     sql = f'SELECT * FROM "{database}"."{schema}"."{table_name.upper()}" LIMIT 10'
-    print(f"[Flask] Executing: {sql}")  # debug so you see it run
+    print(f"[sfapi] Executing SQL: {sql}")  # will print in your terminal
 
-    # reuse your existing helpers
+    # reuse your existing helpers already defined above
     passphrase, pem = get_pass_cert_from_client(account_name, devops_id_full)
     con = connect_2_snowflake_db(pem, passphrase, devops_id_full, account_name, devops_id_role)
 
@@ -30,13 +31,16 @@ def fetch_top10(table_name: str):
         except Exception:
             pass
 
-@app.get("/health")
-def health():
+@app.get("/sfapi/health")
+def sf_health():
     return {"status": "ok"}
 
-# NEW path to avoid clashing with the old one
-@app.get("/api/table/<string:table_name>")
-def api_table_top10(table_name: str):
+@app.get("/sfapi/routes")
+def sf_routes():
+    return jsonify(sorted([str(r) for r in app.url_map.iter_rules()]))
+
+@app.get("/sfapi/table/<string:table_name>")
+def sf_table_top10(table_name: str):
     try:
         data = fetch_top10(table_name)
         return jsonify(data)
@@ -45,10 +49,6 @@ def api_table_top10(table_name: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# optional: view registered routes to confirm which one is active
-@app.get("/routes")
-def routes():
-    return jsonify(sorted([str(r) for r in app.url_map.iter_rules()]))
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    # use a different port to avoid whatever is on 8000
+    app.run(host="127.0.0.1", port=5051, debug=True)
